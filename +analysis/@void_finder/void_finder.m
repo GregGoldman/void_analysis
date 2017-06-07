@@ -12,6 +12,10 @@ classdef void_finder <handle
     %       -
 
     %
+    examples:
+    obj = analysis.void_finder;
+    obj.loadExpt(2);
+    obj.loadAndFilterStream(1,1);
     
     %}
     properties
@@ -23,18 +27,22 @@ classdef void_finder <handle
         
         save_location
         
-        %stuff copied from void_quiz
+        %expt stuff
         %------------
         cur_expt
-        cur_expt_possible_voids
+        cur_expt_possible_voids %TODO: change name to cur_stream_possible_voids
         cur_expt_marked_voids %the new points that the user marks
         
         
+        %analog stream stuff
         cur_stream_idx
         cur_stream
         cur_stream_data
         filtered_cur_stream_data
+        cur_starts_and_stops
         
+        
+        %marker stuff
         cur_marker_idx
         cur_marker_times % holds the marker times so that they match up with the data
         cur_marker
@@ -84,13 +92,19 @@ classdef void_finder <handle
             %return to the old folder
             cd old_location;
         end
+        function runTest(obj)
+            
+        end
         function loadAllExpts(obj)
             %   loads all of the expt files that the user has
             %   this is a very time consuming function. need a way to
             %   block this function from running if they are already loaded
             
-            for i = 1:length(obj.loaded_expts);
-                obj.loaded_expts(i) = notocord.file(obj.expt_file_paths{i});
+            for i = 1:length(obj.expt_file_paths);
+                if( i~=3)
+                obj.loaded_expts{i} = notocord.file(obj.expt_file_paths{i});
+                %TODO: i = 3 does not work
+                end
             end
         end
         function loadExpt(obj,index)
@@ -132,7 +146,7 @@ classdef void_finder <handle
             obj.cur_marker = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.cur_marker_idx)]);
             
             %filtering
-            filter = sci.time_series.filter.butter(1,3,'low'); %order, freq, type
+            filter = sci.time_series.filter.butter(2,0.2,'low'); %order, freq, type
             obj.cur_stream_data = obj.cur_stream.getData();
             obj.filtered_cur_stream_data = obj.cur_stream_data.filter(filter);
             
@@ -163,6 +177,19 @@ classdef void_finder <handle
                 plot(obj.cur_marker_times,y,'k*',obj.cur_end_marker_times,yy,'k^');
             end
         end
+        function findPossibleVoids(obj)
+            data = obj.filtered_cur_stream_data;
+            d1 = data.dif2;
+            d2 = d1.dif2;
+            
+            threshold = 3*10^-8;
+            event_finder = d2.calculators.eventz;
+            
+            obj.cur_starts_and_stops = event_finder.findPeaks(d2,3,'MinPeakHeight',threshold);
+        end
+        %{
+        This method is out of date!
+        
         function findPossibleVoids(obj, plot_found)
             
             %{
@@ -218,7 +245,14 @@ classdef void_finder <handle
                hold on
                plot(obj.cur_expt_possible_voids,y,'k*')
             end
+            
+            %need to get snippets of the data close to my possible voids to save only those parts            
+            for temp = obj.cur_expt_possible_voids;
+                
+                
+            end
         end
+        %}
         function findVolAndTime(obj)
             
             for temp = obj.cur_expt_possible_voids;
