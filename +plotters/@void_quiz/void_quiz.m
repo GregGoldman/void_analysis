@@ -15,7 +15,16 @@ classdef void_quiz < handle
  
     TODO:
     --------
-
+    outline of plan:
+    load all of the data files and save them as matlab objects in a
+    convinient location. This will increase operation speed (hopefully)
+    
+    select random chunks of the data files. Display those and have the user
+    highlight the voids within them. 
+    
+    allow for yes and maybe voids.
+    display the maybe selections twice
+    randomly display the same snippet multiple times ocasionally 
     %}
     
     properties
@@ -60,7 +69,39 @@ classdef void_quiz < handle
             obj.h = guihandles(obj.fig_handle);
             setappdata(obj.fig_handle,'obj',obj);
             
-            %   find the list of files that we have to work with
+            
+            %   instantiate the callbacks
+            set(obj.h.next_button, 'String', 'Next');
+            set(obj.h.next_button, 'Callback', @(~,~)obj.cb_nextPressed());
+            set(obj.h.back_button, 'String', 'Back');
+            set(obj.h.back_button, 'Callback', @(~,~)obj.cb_backPressed());
+            
+            obj.initSubplot();
+            
+            obj.cur_stream_idx = 1; %load the first stream first (analog Channel 01);
+            obj.cur_marker_idx = 2;
+            obj.cur_expt_marked_voids = [];
+            
+            % load the first set of data
+            %file_path = obj.;
+     %       file_path = obj.expt_file_paths{1};
+     %     obj.loadExpt(file_path); %************************
+            
+            
+            obj.cur_disp_range = [];
+     %       obj.findPossibleVoids(); %**********************
+            
+        end
+        function saveExptObjs(obj)
+            
+            %TODO: see if there are files present and only load the ones
+            %which are not (after prompting the user of course). If all of
+            %the files are present, then this function should return and do
+            %nothing
+            
+            
+            
+              %   find the list of files that we have to work with
             %   TODO: update the dba.files.raw.finder class to be able to
             %   handle this with a varargin for FILE_EXTENSION
             FILE_EXTENSION = '.nss';
@@ -77,27 +118,25 @@ classdef void_quiz < handle
             obj.expt_file_paths = obj.expt_file_list_result.file_paths;
             %   above line output is a cell array
             
-            
-            %   instantiate the callbacks
-            set(obj.h.next_button, 'String', 'Next');
-            set(obj.h.next_button, 'Callback', @(~,~)obj.cb_nextPressed());
-            set(obj.h.back_button, 'String', 'Back');
-            set(obj.h.back_button, 'Callback', @(~,~)obj.cb_backPressed());
-            
-            obj.initSubplot();
-            
-            obj.cur_stream_idx = 1; %load the first stream first (analog Channel 01);
-            obj.cur_marker_idx = 2;
-            obj.cur_expt_marked_voids = [];
-            
-            % load the first set of data
-            %file_path = obj.;
-            file_path = obj.expt_file_paths{1};
-            obj.loadExpt(file_path);
+           
             
             
-            obj.cur_disp_range = [];
-            obj.findPossibleVoids();
+            
+            
+            
+            
+            
+            %TODO: make this easy to change/make it update automatically
+            save_location = 'C:\Data\nss_matlab_objs';
+            old_location = cd(save_location);
+            
+            %do the save work here
+    
+            %return to the old folder
+            cd old_location;
+            
+            
+            
             
         end
         function loadExpt(obj, file_path)
