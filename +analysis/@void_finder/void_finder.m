@@ -126,7 +126,7 @@ classdef void_finder <handle
             temp = chan_info(:,3);
             
             [B I J] = unique(temp);
-            for ind = 1:length(B);
+            for ind = 1:length(B)
                 count(ind) = length(find(J==ind));
             end
             % if count == 9, then there are only event markers, not start
@@ -163,9 +163,10 @@ classdef void_finder <handle
             obj.cur_end_marker_times =  86400 * tt;
         end
         function plotCurFilteredData(obj,plot_markers)
+            % 
             %plots the data from the experiment in the index of
             %obj.loaded_expts using the stream listed in stream_num
-            
+            disp('OUT OF DATE');
         
             h = figure();
             plot(obj.filtered_cur_stream_data);
