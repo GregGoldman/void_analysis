@@ -40,6 +40,7 @@ classdef void_finder <handle
         cur_stream_data
         filtered_cur_stream_data
         cur_starts_and_stops
+        cur_reset_pts
         
         
         %marker stuff
@@ -113,6 +114,8 @@ classdef void_finder <handle
         function loadAndFilterStream(obj,index,stream_num)
             % loads the stream indicated by stream_num of the experiment
             % indicated by index
+            % TODO: pass in filter arguments as input arguments to this
+            % method
             
             obj.cur_expt = obj.loaded_expts{index};
             
@@ -178,88 +181,43 @@ classdef void_finder <handle
                 plot(obj.cur_marker_times,y,'k*',obj.cur_end_marker_times,yy,'k^');
             end
         end
-        function findPossibleVoids(obj)
+        function d2 = findPossibleVoids(obj)
             data = obj.filtered_cur_stream_data;
             d1 = data.dif2;
             d2 = d1.dif2;
             
+            %for processing the acceleration
             threshold = 3*10^-8;
             event_finder = d2.calculators.eventz;
             
             obj.cur_starts_and_stops = event_finder.findPeaks(d2,3,'MinPeakHeight',threshold);
-        end
-        %{
-        This method is out of date!
         
-        function findPossibleVoids(obj, plot_found)
+         
+            %for processing the speed
+            speed_thresh = 4*10^-3;
+            event_finder = d1.calculators.eventz;
+            obj.cur_reset_pts = event_finder.findPeaks(d1,3,'MinPeakHeight',speed_thresh);
             
-            %{
-                summary of algorithm:
-                loop through at a given time interval which should be based on the average
-                time of a void.
+            too_close = 10; %seconds. only care abt a sharp up or down... 
+            start_positives = obj.cur_reset_pts.time_locs{1}; 
+            start_negatives = obj.cur_reset_pts.time_locs{2};
+            
+            
+            [LIA LocB] = ismembertol(start_positives,start_negatives,too_close, 'DataScale', 1);
+            % returns an array containing logical 1 (true) where the elements of A are within tolerance of the elements in B
+            % also returns an array, LocB, that contains the index location in B for each element in A that is a member of B.
+            
 
-                there needs to be a limiter on how many times a void can occur over a given
-                duration of time. maybe voids which occur very soon after other voids can
-                be grouped into a different array
-            %}
-            
-            % guesswork for typical void duration:
-            % anywhere from 4 seconds to 30 seconds
-            % step size: 20 seconds
-            
-            time_interval = 10;%seconds, eg the spacing of checking
-            step_size = time_interval/obj.filtered_cur_stream_data.time.dt; % a number of data points
-            n_steps = floor(obj.filtered_cur_stream_data.time.n_samples / step_size); %the number of steps to get thru all the data points
-            dt = obj.filtered_cur_stream_data.time.dt;
-            
-            threshold = 0.2626;
-            time_blocker = 20;
-            time_since_last_void = 0;
-            void_found = 0;
-            raw_data = obj.filtered_cur_stream_data.d;
-            
-            guess = [];
-            
-            for i = 1:n_steps
-                if ((time_since_last_void > time_blocker)&&(~void_found))
-                    cur_val = raw_data(step_size*i);
-                    if (cur_val >= (threshold + prev_val))
-                        guess{end+1} = i*step_size*dt;
-                        void_found = 1;
-                        time_since_last_void = 0;
-                    else
-                        void_found = 0;
-                    end
-                else
-                    void_found = 0;
-                end
-                prev_val = raw_data(step_size*i);
-                time_since_last_void = time_since_last_void + step_size * dt;
-            end
+            % yay this works!
+            %TODO: need to figure out how to order the two arrays so that
+            %this come out working properly...
 
-            markers = cell2mat(guess);
-            obj.cur_expt_possible_voids = markers;
-            
-            if (plot_found)
-               obj.plotCurFilteredData(0);
-               y = 0.*obj.cur_expt_possible_voids - 0.25;
-               hold on
-               plot(obj.cur_expt_possible_voids,y,'k*')
-            end
-            
-            %need to get snippets of the data close to my possible voids to save only those parts            
-            for temp = obj.cur_expt_possible_voids;
-                
-                
-            end
         end
-        %}
-        function findVolAndTime(obj)
-            
-            for temp = obj.cur_expt_possible_voids;
-                %loop through at each area near a void
-            end
-            
+        function getVoidedVolume(obj)
+            %NYI
+        end
+        function getVoidingTime(obj)
+            %NYI
         end
     end
     
