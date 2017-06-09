@@ -1,11 +1,16 @@
 
-    % fourth test run ----------------------------------------------------
+    % fifth test run ----------------------------------------------------
     %  -------------------------------------------------------------------------   
     % -------------------------------------------------------------------------      
 
     obj = analysis.void_finder;
     obj.loadExpt(2);
-    obj.loadAndFilterStream(1,1);
+    obj.loadStream(1,1);
+    obj.filterCurStream();
+    obj.findPossibleVoids();
+    
+    
+    
     
     profile on
     obj.findPossibleVoids();
