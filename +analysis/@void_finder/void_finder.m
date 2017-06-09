@@ -40,7 +40,7 @@ classdef void_finder <handle
         cur_stream_data
         filtered_cur_stream_data
         cur_starts_and_stops
-        cur_reset_pts
+        
         
         
         %marker stuff
@@ -50,6 +50,10 @@ classdef void_finder <handle
         cur_end_marker_idx
         cur_end_marker_times
         cur_end_marker
+        
+        %filtering
+        evaporation_times %(where there is a huge positive jump in slope)
+        reset_times %occurs from voiding %(where there is a huge negative slope back down to zero       
     end
     methods
         function obj = void_finder()
@@ -166,7 +170,8 @@ classdef void_finder <handle
             obj.cur_end_marker_times =  86400 * tt;
         end
         function plotCurFilteredData(obj,plot_markers)
-            % 
+            % THIS METHOD IS OUT OF DATE
+            
             %plots the data from the experiment in the index of
             %obj.loaded_expts using the stream listed in stream_num
             disp('OUT OF DATE');
@@ -194,29 +199,48 @@ classdef void_finder <handle
         
          
             %for processing the speed
+            % it may be much faster to look at magnitude changes rather
+            % than finding peaks in the slope
             speed_thresh = 4*10^-3;
             event_finder = d1.calculators.eventz;
-            obj.cur_reset_pts = event_finder.findPeaks(d1,3,'MinPeakHeight',speed_thresh);
+            cur_reset_pts = event_finder.findPeaks(d1,3,'MinPeakHeight',speed_thresh);
             
             too_close = 10; %seconds. only care abt a sharp up or down... 
-            start_positives = obj.cur_reset_pts.time_locs{1}; 
-            start_negatives = obj.cur_reset_pts.time_locs{2};
+            start_positives = cur_reset_pts.time_locs{1}; 
+            start_negatives = cur_reset_pts.time_locs{2};
             
-            
-            [LIA LocB] = ismembertol(start_positives,start_negatives,too_close, 'DataScale', 1);
+            %BIG PROBLEM: this removed the wrong thing
+            [pos_pres_in_neg idx_of_loc_in_neg] = ismembertol(start_positives,start_negatives,too_close, 'DataScale', 1); %{'OutputAllIndices',true %}
             % returns an array containing logical 1 (true) where the elements of A are within tolerance of the elements in B
             % also returns an array, LocB, that contains the index location in B for each element in A that is a member of B.
+            %There is probably a good way to use this to get rid of some
+            %more errors
             
-
-            % yay this works!
-            %TODO: need to figure out how to order the two arrays so that
-            %this come out working properly...
-
+            f_start_positives = start_positives(~pos_pres_in_neg);
+            temp = start_negatives;
+            temp(find(idx_of_loc_in_neg~=0)) = [];
+            f_start_negatives = temp;
+            clear temp;
+            
+            %now have indices of all the resets
+            
+            obj.evaporation_times = f_start_positives;
+            obj.reset_times = f_start_negatives;
+            %now need to discount these from the list of markers and treat
+            %them differently
         end
-        function getVoidedVolume(obj)
+        function processHumanMarkedPts(obj)
+            %get all of the markers
+            
+            
+        end
+        function processCptMarkedPts(obj)
+            
+        end
+        function vv = getVoidedVolume(obj)
             %NYI
         end
-        function getVoidingTime(obj)
+        function vt = getVoidingTime(obj)
             %NYI
         end
     end

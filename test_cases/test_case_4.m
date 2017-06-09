@@ -13,7 +13,7 @@
     toc %2.738669 seconds 
     tic
     obj.findPossibleVoids();
-    toc
+    toc %63 seconds to run
     
     edges_obj = obj.cur_starts_and_stops;
     figure
@@ -25,19 +25,32 @@
     plot(edges_obj.time_locs{1},start_y,'k*')
     plot(edges_obj.time_locs{2},end_y, 'k+')
     
-    
-    
     start_points = obj.cur_starts_and_stops.time_locs{1};
     end_points = obj.cur_starts_and_stops.time_locs{2};
     %-----------------------------------------------------------------------
     % if voids occur within the first 90 seconds, do not count
     % ------------------------------------------------------------
     calibration_period = 90; %seconds
-     early_starts = find(start_points<calibration_period);
+    early_starts = find(start_points<calibration_period);
     start_points(early_starts) = [];
     
     early_stops = find(end_points<calibration_period);
     end_points(early_stops) = [];
+    
+    
+    start_idx = obj.filtered_cur_stream_data.time.getNearestIndices(start_points);
+    end_idx = obj.filtered_cur_stream_data.time.getNearestIndices(end_points);
+    
+    raw_data = obj.filtered_cur_stream_data.d;
+    
+    start_vals = raw_data(start_idx);
+    end_vals = raw_data(end_idx);
+    
+    hold on
+    h1 = plot(start_points,start_vals,'ko');
+    h2 = plot(end_points, end_vals, 'ks');
+    
+    %analyze visually to check
     
     
         %------------------------------------------------------------------------
@@ -51,7 +64,7 @@
     % middle point which goes way above the end point... that's probably
     % better...
     %actually! probably not...
-tic
+    tic
     back_time = 5;
     skip_time = 10;
     %so total spike width is roughly 15 seconds
@@ -85,46 +98,83 @@ tic
             break;
         end
     end
+    saved_start_pts = start_points;
+    saved_end_pts = end_points;
+    
     start_points(start_deletions) = [];
     end_points(end_deletions) = [];
     
     toc %0.071 seconds
     
+    
+      start_idx = obj.filtered_cur_stream_data.time.getNearestIndices(start_points);
+    end_idx = obj.filtered_cur_stream_data.time.getNearestIndices(end_points);
+    
+     start_vals = raw_data(start_idx) - 0.01;
+    end_vals = raw_data(end_idx)-0.01;
+    
+    h3 = plot(start_points,start_vals,'rd')
+    h4 = plot(end_points,end_vals, 'rp')
+    
+    
     %-------------------------------------------------------------------
-    %if there is a decreasing slope before a stop point, then that stop
-    %point should not be there
+    %Treat the resets differently
     %------------------------------------------------------------------
-  %%%** possible easier way to do this: look back a few data pts. is that
-  %%%value smaller or larger?
-            %problem with that is that we then get rid of all of the sharp
-            %drops...
-                %could solve this by having another threshold change after
-                %considering how quickly changes occur with the reset.
     
-    evaporation_rate = 5; %some number which is relatively small compared to the huge drops for resets
-        %need a good way to find this to proceed -- basically need some
-        %approximation for a normal evaporation rate
-        % will be a similar but reversed thing for removing false starts
-        
-    %skip 10 seconds backward
-    %take the slope over 5 seconds
-    %if it is not positive, then this must be a false start
+    %first, remove all of the evaporation points 
+    evap_t = obj.evaporation_times;
+    res_t = obj.reset_times;
     
-    %loop through all of the starts
+    evap_window = 10; %
+    %for now, cut out 10 seconds on either side, although this has the
+    %potential to cause problems...
     
-	temp = end_points;
-    for i = 1: length(end_points)
-        %grab older data
-        
+    h5 = plot(evap_t,0*evap_t+2,'kh');
+    %shows up roughly in the middle of the evaporation period
+    start_deletions = [];
+    end_deletions = [];
+    
+    for (i = 1:length(evap_t))
+        start_deletions = [start_deletions;find((start_points > (evap_t(i) - evap_window)) & (start_points < (evap_t(i) + evap_window)))];
+        end_deletions = [end_deletions; find((end_points > (evap_t(i) - evap_window))&(end_points < (evap_t(i) + evap_window)))];
     end
     
+    %will just need to bring up these points as questionable when presented
+    %to the user
+    saved_start_pts2 = start_points;
+    saved_end_pts2 = end_points;
     
-    linear_calculator = sci.time_series.calculators.regression.linearFit(data_to_fit);
+    start_points(start_deletions) = [];
+    end_points(end_deletions) = [];
+  
+      start_idx = obj.filtered_cur_stream_data.time.getNearestIndices(start_points);
+    end_idx = obj.filtered_cur_stream_data.time.getNearestIndices(end_points);
     
+     start_vals = raw_data(start_idx) - 0.02;
+    end_vals = raw_data(end_idx)-0.02;
     
+    h6 = plot(start_points,start_vals,'gd')
+    h7 = plot(end_points,end_vals, 'gp')
     
-    
-    
+        %note to self: would integration be a good option?
+        
+    %second, deal with the reset points...
+       % plan: remove any data points that are in the middle of the reset,
+       % but keep the points at the edges
+       
+       h8 = plot(res_t,0*res_t+4, 'kp');
+       res_window = 6;
+       close_starts = [];
+       close_ends = [];
+       
+       for (i = 1:length(res_t))
+           close_starts = [close_starts;find((start_points > (res_t(i) - res_window)) & (start_points < (res_t(i) + res_window)))];
+           close_ends = [close_ends; find((end_points > (res_t(i) - res_window))&(end_points < (res_t(i) + res_window)))];
+       end
+   %need to find pairings and delete middle ones
+        %better option: do this along the way!
+   
+   
     %----------------------------------------------------------------------
     %if a start or a stop occurs without a corresponding stop or start
     %within a threshold, it does not count-----------------------------
