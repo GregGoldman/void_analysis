@@ -140,7 +140,9 @@ classdef void_finder <handle
             accel_thresh = 3*10^-8;
             obj.processD2(accel_thresh);
             %------------------------------------------------------------
-            obj.removeCalibration(90); %input is 90 seconds, calibration period
+            obj.IDCalibration(90); %input is 90 seconds, calibration period
+            % updates obj.calibration_marks
+            obj.updateDetections(obj.calibration_marks{1}, obj.calibration_marks{2});
             %------------------------------------------------------------
             % processing on the speed to look for spikes in the data
             spike_thresh = 1*10^-4;
@@ -189,18 +191,26 @@ classdef void_finder <handle
     methods %mostly helpers
         function processD2(obj,accel_thresh)
             obj.initial_detections = obj.event_finder.findLocalMaxima(obj.d2,3,accel_thresh);
+            obj.updated_detections = cell(1,2);
+            obj.updated_detections = obj.initial_detections.time_locs;
         end
-        function removeMarkers(obj,start_times, end_times)
+        function updateDetections(obj,start_times, end_times)
+            temp1 = obj.updated_detections{1};
+            temp2 = obj.updated_detections{2};
             
+            obj.updated_detections{1} = setdiff(temp1,start_times);
+            obj.updated_detections{2} = setdiff(temp2,end_times);
         end
-        function removeCalibration(obj, calibration_period)
+        function IDCalibration(obj, calibration_period)
             start_points = obj.initial_detections.time_locs{1};
             end_points = obj.initial_detections.time_locs{2};
             
             obj.calibration_marks = cell(1,2);
             
-            obj.calibration_marks{1} = find(start_points<calibration_period);
-            obj.calibration_marks{2} = find(end_points<calibration_period);
+            obj.calibration_marks{1} = start_points(find(start_points<calibration_period));
+            obj.calibration_marks{2} = end_points(find(end_points<calibration_period));
+            
+            obj.updateDetections(obj.calibration_marks{1}, obj.calibration_marks{2});
         end
         function handles = plotCurrentMarks(obj)
             handles = cell(1,2);
