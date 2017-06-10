@@ -37,6 +37,7 @@ classdef void_finder <handle
         cur_markers_idx     %cell: the marker indices  [start, end] (!!as in which data streams they are in the channel info!!)
         cur_markers         %the marker objects with names, comments, times, etc..
         cur_markers_times   % holds the marker times so that they match up with the data
+        marker_plot_handles
 
         %   filtering
         filtered_cur_stream_data    % sci.time_series.data
@@ -46,8 +47,9 @@ classdef void_finder <handle
         
         initial_detections          % [starts, ends]
         updated_detections          % list gets smaller and smaller as poitns are removed
-        calibration_marks
         
+        calibration_marks
+        possible_spikes
         evaporation_times %(where there is a huge positive jump in slope)
         reset_times %occurs from voiding %(where there is a huge negative slope back down to zero
         
@@ -61,6 +63,7 @@ classdef void_finder <handle
             obj.save_location = 'C:\Data\nss_matlab_objs';
             obj.findExptFiles();
             obj.loaded_expts = [];
+            obj.marker_plot_handles = cell(1,2);
         end
         function findExptFiles(obj)
             %TODO: see if there are files present and only load the ones
@@ -129,7 +132,7 @@ classdef void_finder <handle
             filter = sci.time_series.filter.butter(2,0.2,'low'); %order, freq, type
             obj.filtered_cur_stream_data = obj.cur_stream_data.filter(filter);
         end
-        function d2 = findPossibleVoids(obj)
+        function findPossibleVoids(obj)
             obj.d1 = obj.filtered_cur_stream_data.dif2;
             obj.d2 = obj.d1.dif2;
             obj.event_finder = obj.d2.calculators.eventz;
@@ -142,53 +145,169 @@ classdef void_finder <handle
             %------------------------------------------------------------
             obj.IDCalibration(90); %input is 90 seconds, calibration period
             % updates obj.calibration_marks
-            obj.updateDetections(obj.calibration_marks{1}, obj.calibration_marks{2});
+            % also calls updateDetections (see obj.updated_detections)
             %------------------------------------------------------------
-            % processing on the speed to look for spikes in the data
-            spike_thresh = 1*10^-4;
-            spike_width = 10; %roughly 10 seconds across in width
-            possible_spikes = event_finder.findLocalMaxima(d1,3,spike_thresh);
-            [pos_pres_in_neg idx_of_loc_in_neg] = ismembertol(start_positives,start_negatives,spike_width/2, 'DataScale', 1); %{'OutputAllIndices',true %}
+            obj.findSpikes();
+            %------------------------------------------------------------
+            obj.processD1();
+            %------------------------------------------------------------
+            obj.findPairs();
+        end
+    end
+    methods %mostly helpers
+        function findPairs(obj)
+            %if a start or a stop occurs without a corresponding stop or start
+            %within a threshold, it does not count-----------------------------
+
+            %PROBLEM WITH PAIR FINDING: it is not always the closest one which is
+            %the correct one........ :( it is more likely the farther of the
+            %closest ones...
+
+            %first, loop through the starting times
+            start_points = obj.updated_detections{1};
+            end_points = obj.updated_detections{2};
+            
+            %now, sort them (I think they are already sorted... need to
+            %check
+            [sorted_start_array, SI] = sort(start_points);
+            [sorted_stop_array,  EI] = sort(end_points);
+            
+            result_class1 = sl.array.nearestPoint(sorted_stop_array,sorted_start_array, 'p1');
+            
+            % need to run it the other way to compare
+            
+            result_class2 = result_class1 = sl.array.nearestPoint(sorted_stop_array,sorted_start_array, 'p1');
+
+            fl_start_array = fliplr(sorted_start_array);
+            fl_stop_array = fliplr(sorted_stop_array);
             
             
+            
+            
+            
+            
+            
+            start_idxs = pairs_by_sorted_idx(:,1);
+            stop_idxs = pairs_by_sorted_idx(:,2);
+  
+            starts = sorted_start_array(pairs_by_sorted_idx(:,1)); %these are in units of time
+            stops = sorted_stop_array(pairs_by_sorted_idx(:,2));
+            
+
+            start_idxs = obj.filtered_cur_stream_data.time.getNearestIndices(starts); %these are in units of index
+            stop_idxs = obj.filtered_cur_stream_data.time.getNearestIndices(stops);
+            
+            start_yy = obj.filtered_cur_stream_data.d(start_idxs); %these are the points on the graphs
+            stop_yy =  obj.filtered_cur_stream_data.d(stop_idxs);
+            
+            plot(starts, start_yy, 'go')
+            plot(stops, stop_yy, 'gs')
+            
+            
+        end
+        function processD1(obj)
             %for processing the speed
-            % it may be much faster to look at magnitude changes rather
-            % than finding peaks in the slope
             speed_thresh = 4*10^-3;
-            event_finder = d1.calculators.eventz;
-            cur_reset_pts = event_finder.findLocalMaxima(d1,3,speed_thresh);
+            big_jump_pts = obj.event_finder.findLocalMaxima(obj.d1,3,speed_thresh);
             
-            too_close = 10; %seconds. only care abt a sharp up or down...
-            start_positives = cur_reset_pts.time_locs{1};
-            start_negatives = cur_reset_pts.time_locs{2};
+            too_close = 10; %seconds. only care abt a sharp up or down, not one after the other
+            positives = big_jump_pts.time_locs{1};
+            negatives = big_jump_pts.time_locs{2};
             
             %BIG PROBLEM: this removed the wrong thing
-            [pos_pres_in_neg idx_of_loc_in_neg] = ismembertol(start_positives,start_negatives,too_close, 'DataScale', 1); %{'OutputAllIndices',true %}
+            [pos_pres_in_neg idx_of_loc_in_neg] = ismembertol(positives,negatives,too_close, 'DataScale', 1); %{'OutputAllIndices',true %}
             % returns an array containing logical 1 (true) where the elements of A are within tolerance of the elements in B
             % also returns an array, LocB, that contains the index location in B for each element in A that is a member of B.
             %There is probably a good way to use this to get rid of some
             %more errors ---
             %   later note: trend of a positive and a negative in d1 very close
             %   together is consistently an error
-            obj.glitch_markers = [];
-            obj.glitch_markers{1} = start_positives(pos_pres_in_neg);
-            obj.glitch_markers{2} = start_negatives(idx_of_loc_in_neg(idx_of_loc_in_neg~=0));
             
-            f_start_positives = start_positives(~pos_pres_in_neg);
-            temp = start_negatives;
-            temp(idx_of_loc_in_neg(idx_of_loc_in_neg~=0)) = [];
-            f_start_negatives = temp;
-            clear temp;
+            obj.glitch_markers = cell(1,2);
             
-            %now have indices of all the resets
+            glitch_peak_starts = positives(pos_pres_in_neg);
+            t = find(idx_of_loc_in_neg);
+            tt = idx_of_loc_in_neg(t);
+            glitch_peak_ends = negatives(tt);
+            %these points are values in time
             
-            obj.evaporation_times = f_start_positives;
-            obj.reset_times = f_start_negatives;
-            %now need to discount these from the list of markers and treat
-            %them differently
+            evap_POI = positives(~pos_pres_in_neg);
+            
+            ind = 1:length(negatives);
+            ind = setdiff(ind,tt);
+            reset_POI = negatives(ind);            
+
+            %go outward 5 seconds
+            time_thresh = 5;
+           
+            for i = 1:length(glitch_peak_starts)
+                start_time = glitch_peak_starts(i) - time_thresh;
+                end_time = glitch_peak_ends(i) + time_thresh;
+                
+                % mark the bad start points
+                start_markers = obj.updated_detections{1};
+                start_idxs = (start_markers > start_time) & (start_markers < end_time);
+                obj.glitch_markers{1} = start_markers(start_idxs)';
+
+                % mark the bad end points
+                end_markers = obj.updated_detections{2};
+                end_idxs = (end_markers > start_time) & (end_markers < end_time);
+                obj.glitch_markers{2} = end_markers(end_idxs);
+            end
+            obj.updateDetections(obj.glitch_markers{1}, obj.glitch_markers{2});
+            
+            
+            % now need to find resets and evaporation times
+            %EVAPORATION:
+            %for now, cut out 10 seconds on either side, although this has the
+            %potential to cause problems...
+            %shows up roughly in the middle of the evaporation period
+            start_points = obj.updated_detections{1};
+            end_points = obj.updated_detections{2};
+            evap_window = 10; %
+            
+            start_deletions_idx = [];
+            end_deletions_idx = [];
+            
+            for (i = 1:length(evap_POI))
+                start_deletions_idx = [start_deletions_idx;find((start_points > (evap_POI(i) - evap_window)) & (start_points < (evap_POI(i) + evap_window)))'];
+                end_deletions_idx = [end_deletions_idx; find((end_points > (evap_POI(i) - evap_window))&(end_points < (evap_POI(i) + evap_window)))'];
+            end
+            
+            obj.evaporation_times = cell(1,2);
+            obj.evaporation_times{1} = start_points(start_deletions_idx);
+            obj.evaporation_times{2} = end_points(end_deletions_idx);
+            
+            obj.updateDetections(obj.evaporation_times{1}, obj.evaporation_times{2});
+            
+            
+            % now need to deal with the RESET POINTS:
+            start_points = obj.updated_detections{1};
+            end_points = obj.updated_detections{2};
+            
+            res_window = 10;
+            close_starts = [];
+            close_ends = [];
+            
+            start_deletions_idx = [];
+            end_deletions_idx = [];
+            
+            for (i = 1:length(reset_POI))
+                
+                %find the start points near the rest point
+                %keep only the first one
+                close_starts = find((start_points > (reset_POI(i) - res_window)) & (start_points < (reset_POI(i) + res_window)));
+                start_deletions_idx = [start_deletions_idx ; close_starts(2:end)];
+                
+                close_ends = find((end_points > (reset_POI(i) - res_window))&(end_points < (reset_POI(i) + res_window)));
+                end_deletions_idx = [end_deletions_idx; close_ends(1:end-1)];
+            end
+            obj.reset_times = cell(1,2);
+            obj.reset_times{1} = start_points(start_deletions_idx);
+            obj.reset_times{2} = end_points(end_deletions_idx);
+            
+            obj.updateDetections(obj.reset_times{1}, obj.reset_times{2});
         end
-    end
-    methods %mostly helpers
         function processD2(obj,accel_thresh)
             obj.initial_detections = obj.event_finder.findLocalMaxima(obj.d2,3,accel_thresh);
             obj.updated_detections = cell(1,2);
@@ -212,9 +331,83 @@ classdef void_finder <handle
             
             obj.updateDetections(obj.calibration_marks{1}, obj.calibration_marks{2});
         end
-        function handles = plotCurrentMarks(obj)
-            handles = cell(1,2);
-         %   handles{1} =
+        function findSpikes2(obj)
+            %   NYI~~~~
+            %   finds spikes in the data based on the derivative rather than
+            %   values returning back to previous.
+            %   most spikes have a sharp positive value followed by a sharp
+            %   negative value. markers around these points need to be
+            %   removed.
+            
+            
+            %{
+            % processing on the speed to look for spikes in the data
+            spike_thresh = 1*10^-4;
+            spike_width = 5; %seconds from peaks
+            %starts are usually within 3 seconds at the most
+            %stops are usually within 5 or 6
+            d1_peaks = obj.event_finder.findLocalMaxima(obj.d1,3,spike_thresh);
+            [pos_pres_in_neg idx_of_loc_in_neg] = ismembertol(d1_peaks.time_locs{1},d1_peaks.time_locs{2},spike_width, 'DataScale', 1); %{'OutputAllIndices',true %}
+            %}    
+        end
+        function findSpikes(obj)
+            %   TODO: this doesn't work very well...
+            % spikes tend to have start markers at roughly the same value on
+            % both sides of the spike. need to find start points that are
+            % close together in time and in magnitude.
+            % also test whether or not the value before the spike is the
+            % same as after the spike.
+            
+            
+            start_times = obj.updated_detections{1};
+            end_times = obj.updated_detections{2};
+            
+            starting_idxs = obj.filtered_cur_stream_data.time.getNearestIndices(start_times);
+            ending_idxs = obj.filtered_cur_stream_data.time.getNearestIndices(end_times);
+            
+            data = obj.filtered_cur_stream_data.d;
+            starting_vals = data(starting_idxs);
+            ending_vals = data(ending_idxs);
+            
+            time_tol = 10; %seconds    
+            y_tol = 0.1;
+            
+            spike_start_markers = [];
+            spike_end_markers = [];
+            
+            for i = 1:length(start_times)-1
+                if ((start_times(i+1) - start_times(i)) < time_tol) && (abs(starting_vals(i+1) - starting_vals(i)) < y_tol) 
+                    %this is probably a spike
+                    spike_start_markers = [spike_start_markers; start_times(i); start_times(i+1)]
+                    
+                    %need to find the nearby end markers
+                    
+                    a = ismembertol(end_times,spike_start_markers, time_tol, 'DataScale', 1);
+                    
+                    spike_end_markers = [spike_end_markers; end_times(a)'];  
+                    obj.possible_spikes = cell(1,2);
+                    obj.possible_spikes = {spike_start_markers, spike_end_markers}
+                end
+            end
+            obj.updateDetections(spike_start_markers, spike_end_markers); 
+        end
+        function plotCurrentMarks(obj)
+            raw_data = obj.filtered_cur_stream_data.d;
+            start_times = obj.updated_detections{1};
+            end_times = obj.updated_detections{2};
+            start_indices = obj.filtered_cur_stream_data.time.getNearestIndices(start_times);
+            end_indices = obj.filtered_cur_stream_data.time.getNearestIndices(end_times);
+            
+            start_y = raw_data(start_indices);
+            end_y = raw_data(end_indices);
+            hold on
+            
+            obj.marker_plot_handles{end+1,1} =   plot(start_times,start_y,'k*')
+            obj.marker_plot_handles{end+1,2} =   plot(end_times,end_y, 'k+')  
+        end
+        function plotFilteredData(obj)
+            figure
+            plot(obj.filtered_cur_stream_data)
         end
     end
     methods (Hidden) %methods which don't work yet
