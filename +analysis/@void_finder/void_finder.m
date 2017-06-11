@@ -52,8 +52,13 @@ classdef void_finder <handle
         possible_spikes
         evaporation_times %(where there is a huge positive jump in slope)
         reset_times %occurs from voiding %(where there is a huge negative slope back down to zero
-        
         glitch_markers %cell [start] [stop]
+        
+        cpt_vv
+        cpt_vt
+        
+        u_vv
+        u_vt
     end
     methods
         function obj = void_finder()
@@ -100,7 +105,7 @@ classdef void_finder <handle
             
             chan_info = table2cell(obj.cur_expt.chan_info);
             temp = chan_info(:,3);
-            [B I J] = unique(temp);
+            [B, I, J] = unique(temp);
             for ind = 1:length(B)
                 count(ind) = length(find(J==ind));
             end
@@ -169,41 +174,63 @@ classdef void_finder <handle
             
             %now, sort them (I think they are already sorted... need to
             %check
-            [sorted_start_array, SI] = sort(start_points);
-            [sorted_stop_array,  EI] = sort(end_points);
-            
-            result_class1 = sl.array.nearestPoint(sorted_stop_array,sorted_start_array, 'p1');
-            
-            % need to run it the other way to compare
-            
-            result_class2 = result_class1 = sl.array.nearestPoint(sorted_stop_array,sorted_start_array, 'p1');
-
-            fl_start_array = fliplr(sorted_start_array);
-            fl_stop_array = fliplr(sorted_stop_array);
-            
-            
-            
-            
-            
-            
-            
-            start_idxs = pairs_by_sorted_idx(:,1);
-            stop_idxs = pairs_by_sorted_idx(:,2);
-  
-            starts = sorted_start_array(pairs_by_sorted_idx(:,1)); %these are in units of time
-            stops = sorted_stop_array(pairs_by_sorted_idx(:,2));
+            [sorted_start_array] = sort(start_points);
+            [sorted_stop_array] = sort(end_points);
             
 
-            start_idxs = obj.filtered_cur_stream_data.time.getNearestIndices(starts); %these are in units of index
-            stop_idxs = obj.filtered_cur_stream_data.time.getNearestIndices(stops);
+            %   IND = NEARESTPOINT(X,Y) finds the value in Y which is the closest to
+            %   each value in X, so that abs(Xi-Yk) => abs(Xi-Yj) when k is not equal to j.
+            %   IND contains the indices of each of these points.
+            %   Example:
+            %      NEARESTPOINT([1 4 12],[0 3]) % -> [1 2 2]
+            %       for each index in x, the value is the closest index in y
+            %
+            %   [IND,D] = ... also returns the absolute distances in D,
+            %   that is D == abs(X - Y(IND))
+            %   IND is for each index in sorted_start_array, the closest index
+            %   in sorted_stop_array
+            %    NEARESTPOINT(X, Y, M) specifies the operation mode M:
+            %   'nearest' : default, same as above
+            %   'previous': find the points in Y that are closest, but preceeds a point in X
+            %               NEARESTPOINT([0 4 3 12],[0 3],'previous') % -> [NaN 2 1 2]
+            %   'next'    : find the points in Y that are closets, but follow a point in X
+            %               NEARESTPOINT([1 4 3 12],[0 3],'next') % -> [2 NaN 2 NaN]
+            [IND, D] = nearestpoint(sorted_start_array,sorted_stop_array,'next');
             
-            start_yy = obj.filtered_cur_stream_data.d(start_idxs); %these are the points on the graphs
-            stop_yy =  obj.filtered_cur_stream_data.d(stop_idxs);
+            % match pairs:
+            used_vals = [];
+            partners = [];
+            nd = length(IND);
+            for i = 1:nd
+                if ~isnan(IND(i))
+                    cur_val = IND(i);
+
+                    temp = ismember(IND,IND(i));  
+                    % logical of where in the IND matrix the current value
+                    % is found
+
+                    % we want to keep the one which is farthest away (the
+                    % first one)
+                    t = find(temp); 
+                    start_to_save = t(1);
+                    stop_to_save = cur_val;
+                    % this assumes that starts always come first... and we
+                    % may have a start start stop
+
+                    partners(end+1,1) = start_to_save;
+                    partners(end,2) = stop_to_save;
+                end
+            end
+
+            a = 1:length(sorted_start_array);
+            b = 1:length(sorted_stop_array);
+            delete_start_idxs = setdiff(a,partners(:,1));
+            delete_stop_idxs = setdiff(b,partners(:,2));
+
+            delete_start_times = sorted_start_array(delete_start_idxs);
+            delete_stop_times = sorted_stop_array(delete_stop_idxs);
             
-            plot(starts, start_yy, 'go')
-            plot(stops, stop_yy, 'gs')
-            
-            
+            obj.updateDetections(delete_start_times,delete_stop_times);
         end
         function processD1(obj)
             %for processing the speed
@@ -378,7 +405,7 @@ classdef void_finder <handle
             for i = 1:length(start_times)-1
                 if ((start_times(i+1) - start_times(i)) < time_tol) && (abs(starting_vals(i+1) - starting_vals(i)) < y_tol) 
                     %this is probably a spike
-                    spike_start_markers = [spike_start_markers; start_times(i); start_times(i+1)]
+                    spike_start_markers = [spike_start_markers; start_times(i); start_times(i+1)];
                     
                     %need to find the nearby end markers
                     
@@ -390,6 +417,22 @@ classdef void_finder <handle
                 end
             end
             obj.updateDetections(spike_start_markers, spike_end_markers); 
+        end
+        function plotUserMarks(obj)
+            % TODO: combine this with the other plot method and have
+            % options
+            data = obj.cur_stream_data.d;
+            start_times = obj.cur_markers_times(:,1);
+            end_times = obj.cur_markers_times(:,2);
+            start_indices = obj.filtered_cur_stream_data.time.getNearestIndices(start_times);
+            end_indices = obj.filtered_cur_stream_data.time.getNearestIndices(end_times);
+            
+            start_y = data(start_indices);
+            end_y = data(end_indices);
+            hold on
+            
+            obj.marker_plot_handles{end+1,1} =   plot(start_times,start_y,'ko')
+            obj.marker_plot_handles{end,2} =   plot(end_times,end_y, 'ks')
         end
         function plotCurrentMarks(obj)
             raw_data = obj.filtered_cur_stream_data.d;
@@ -403,50 +446,26 @@ classdef void_finder <handle
             hold on
             
             obj.marker_plot_handles{end+1,1} =   plot(start_times,start_y,'k*')
-            obj.marker_plot_handles{end+1,2} =   plot(end_times,end_y, 'k+')  
+            obj.marker_plot_handles{end,2} =   plot(end_times,end_y, 'k+')  
         end
         function plotFilteredData(obj)
             figure
             plot(obj.filtered_cur_stream_data)
         end
-    end
-    methods (Hidden) %methods which don't work yet
-                function plotCurFilteredData(obj,plot_markers)
-            % THIS METHOD IS OUT OF DATE
-            
-            %plots the data from the experiment in the index of
-            %obj.loaded_expts using the stream listed in stream_num
-            disp('OUT OF DATE');
-            
-            h = figure();
-            plot(obj.filtered_cur_stream_data);
-            
-            if(plot_markers)
-                y = obj.cur_start_markers_times.*0 -0.5;
-                yy = obj.cur_end_markers_times.*0 - 0.5;
-                hold on
-                plot(obj.cur_start_markers_times,y,'k*',obj.cur_end_markers_times,yy,'k^');
-            end
-        end
-        function saveExptObjs(obj)
-            % NYI!!!
-            %TODO: make this easy to change/make it update automatically
-            old_location = cd(save_location);
-            
-            %do the save work here
-            
-            %return to the old folder
-            cd old_location;
-        end
         function processHumanMarkedPts(obj)
             %get all of the markers
+            starts = obj.cur_markers_times(:,1);
+            ends = obj.cur_markers_times(:,2);
             
-            
+            obj.u_vv = obj.getVoidedVolume(starts,ends);
+            obj.u_vt = obj.getVoidingTime(starts,ends);   
         end
         function processCptMarkedPts(obj)
-            
+            obj.cpt_vv = obj.getVoidedVolume(obj.updated_detections{1}, obj.updated_detections{2});
+            obj.cpt_vt = obj.getVoidingTime(obj.updated_detections{1}, obj.updated{2});
         end
         function vv = getVoidedVolume(obj,start_markers,end_markers)
+            % TODO: use the raw data for this analysis?????
             %   given start and end markers, returns the voided volume over
             %   the course of the void
             %   TODO: clarify if this calculation should be completed using
@@ -459,12 +478,21 @@ classdef void_finder <handle
             %
             %   inputs:
             %   ---------------
-            %   -start_markers: double array
-            %   -start_markers: double array
+            %   -start_markers: double array (times)
+            %   -start_markers: double array (times)
             
             if (length(start_marker) ~= length(end_markers))
                 error('input vectors are different sizes')
             end
+            data = obj.filtered_cur_stream_data.d;
+            
+            start_idxs = obj.filtered_cur_stream_data.time.getNearestIndices(start_markers);
+            end_idxs = obj.filtered_cur_stream_data.time.getNearestIndices(end_markers);
+            
+            start_vals = data(start_idxs);
+            end_vals = data(end_idxs);
+            
+            vv = start_vals - end_vals;
         end
         function vt = getVoidingTime(start_markers, end_markers)
             %   given start and end markers, returns the time difference
@@ -477,9 +505,19 @@ classdef void_finder <handle
             if (length(start_marker) ~= length(end_markers))
                 error('input vectors are different sizes')
             end
-            
-            
             vt = end_markers - start_markers;
+        end
+    end
+    methods (Hidden) %methods which don't work yet
+        function saveExptObjs(obj)
+            % NYI!!!
+            %TODO: make this easy to change/make it update automatically
+            old_location = cd(save_location);
+            
+            %do the save work here
+            
+            %return to the old folder
+            cd old_location;
         end
         function loadAllExpts(obj)
             %   loads all of the expt files that the user has
