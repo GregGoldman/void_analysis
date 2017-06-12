@@ -1,0 +1,32 @@
+void_finder project issues:
+------------------------------
+x = done
+~ = kind of done
+
+[x]	remove the use of cell arrays in general
+[~]	improve commenting of the code
+[]	include examples
+[~]	split up large functions into their own files, have helper functions
+	
+[]	improve the structure of the findPeaks code
+
+[]	update the nearestNeighbor code and find an example of the old bug
+[]	add examples of points of interest in the code
+[]	create plots of vv and vt
+[x]	update functionality to find vv and vt (averaging of points)
+
+
+[]	deal with the resets (finding the magnitudes is not currently working -- need to string together the data so that the resests simply do not show up)
+[]	talk to danielle about various points of interest in the data
+[]	merge together groups which are very close
+[]	finish/fix code which pairs algorithm points with user points
+[]	eventually show the distributions of the features(far down the line)
+[]	interface for working with the data
+[]	fix glitches and jumps (string together the data appropriately) (probably do this sooner rather than later)
+
+[]	compareUserCpt() is not working very well at the moment...
+
+
+
+[]	plot GUI!
+

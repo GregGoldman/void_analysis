@@ -1,0 +1,7 @@
+in the usual test stream (see test_case_7)
+3000 seconds to 4500 seconds
+
+1.18 * 10^4 to 1.2*10^4
+3.025 to 3.045
+3.442 to 3.444
+3.91 to 3.93
