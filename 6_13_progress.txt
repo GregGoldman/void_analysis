@@ -1,0 +1,31 @@
+tried to work on the code for comparing with the user-marked voids. Ran into some bugs there. Decided to spend more time on the algorithm before trying to figure that out
+
+cleaned up the formatting of some more of the code
+
+improved reset/glitch finding a little bit
+
+worked on improving spike identification. Previous algorightm was only finding positive spikes in the data, not negative ones. 
+First try: look at where we have identified that there are markers which may be near spikes. check around those and remove them with any in that range.
+	Second try (if that doesn't work): go through the orignal data set and find regions where the data is steady, and thus we assume that there are no markers in that range.
+---First try worked pretty well. Will update if that needs to change.
+		Update later in the day: if there are regions of noisy data (more than just a spike, it is not usually picked up). Started on this today, will finish tomorrow
+
+
+worked on the functions called improveEndMarkerAccuracy and improveStartMarkerAccuracy:
+	uses slopes before and after markers to zero in on proper timing
+	ISSUE: the data is very noisy. I'd like to do the fitting on the raw data. This does work, but every fit brings up an error. I've been using polyfit, and I get the following: 
+		Warning: Polynomial is badly conditioned. Add points with distinct X
+		values, reduce the degree of the polynomial, or try centering and
+		scaling as described in HELP POLYFIT.  
+
+	improvement on this: do this after removing odd voids (i.e. too close together, too noisy, etc...)
+
+	End of day note: other than always causing a ton of warnings to show up, this is working pretty well
+	TODO: combing into same for loop
+	TODO: find a different/more efficient way to find slopes/intersections and with fewer warnings
+
+
+
+
+Side note: it would be really nice to have the side panel show the help for each function as you are typing it in. I keep forgetting what some of the input arguments (ie optional input values are for some of my functions). Not sure how to start on that though.
+

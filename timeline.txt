@@ -1,0 +1,37 @@
+Project timeline:
+Today's date: 6/13/2017
+
+Weekly Goals:
+Week 1: 6/5 - 6/9 [x]
+[x]	Worked on processing of files, structure of code...
+
+Week 2: 5/12 - 5/16
+[]	Improve algorithm, start comparing to 'ground truth' data
+		Top priority--the algorithm still needs substantial work (seems from comparing with other trials...)
+			consider a convolution????
+
+[]	fix the comparison code (bug from yesterday)
+[]	create plots of vv and vt
+[]	add examples/points of interest in the code
+[]	Talk to Danielle about various points in the data/past trials
+[]	find ways to correct the resets/evaporations and the glitches in the data
+[]	merge voids which are very close toghether
+[]	(by end of Friday) mostly successful algorithm
+[]	really carefully go through the finding pairs function to make sure it works properly...
+[]	*something about the timing is just not quite right...
+
+
+
+	QUESTION: is it worth trying to get the slopes around all of the voids and find the point where the intersection is? will that improve the timing substantially?
+
+
+Week 3:5/19 - 5/23
+[]	Work on the user interface, figure out saving 
+[]	design GUI
+[]	finished GUI (more or less)
+
+Week 4: 5/26 - 5/30
+[]	Testing period, get feedback
+[]	work on writing back to notocord files?
+[]	
+

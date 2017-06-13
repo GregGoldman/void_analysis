@@ -1,11 +1,11 @@
-function processD1(obj)
+function processD1_2(obj)
 %   function processD1()
 %   analysis.void_finder.processD1();
 %   method of the void_finder which analyzes the first derivative to find
 %   points of   1)glitches 2)resets 3)evaporations
 
 
-SPEED_THRESH = 3*10^-3;
+SPEED_THRESH = 4*10^-3;
 big_jump_pts = obj.event_finder.findLocalMaxima(obj.d1,3,SPEED_THRESH);
 positives = big_jump_pts.time_locs{1};
 negatives = big_jump_pts.time_locs{2};
@@ -38,7 +38,7 @@ glitch_peak_starts = positives(pos_pres_in_neg);
 glitch_peak_ends = negatives(tt);
 %these points are values in time
 
-time_thresh = 15;
+time_thresh = 5;
 for i = 1:length(glitch_peak_starts)
     start_time = glitch_peak_starts(i) - time_thresh;
     end_time = glitch_peak_ends(i) + time_thresh;
@@ -99,17 +99,11 @@ for i = 1:length(reset_POI)
     %find the start points near the rest point
     %keep only the first one
     close_starts = find((start_times > (reset_POI(i) - RES_WINDOW)) & (start_times < (reset_POI(i) + RES_WINDOW)));
-    temp = start_deletions_idx;
-    start_deletions_idx = [temp , close_starts(2:end)];
-          % close starts comes in as a column vector
+    start_deletions_idx = [start_deletions_idx ; close_starts(2:end)];
     start_resets_idx(end+1) = close_starts(1);
 
     close_ends = find((end_times > (reset_POI(i) - RES_WINDOW))&(end_times < (reset_POI(i) + RES_WINDOW)));
-    temp = end_deletions_idx;
-    end_deletions_idx = [temp, close_ends(1:end-1)];
-        %   close_ends is a col vector
-        %
-        
+    end_deletions_idx = [end_deletions_idx; close_ends(1:end-1)];
     end_resets_idx(end+1)= close_ends(1);
 end
 
