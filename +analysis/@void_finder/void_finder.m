@@ -24,8 +24,7 @@ classdef void_finder <handle
       %  TODO: these two methods below should be run after removing voids which are
       %        too small/too close together, otherwise errors tend to occur
     
-        new_starts = obj.improveStartMarkerAccuracy();
-        new_ends = obj.improveEndMarkerAccuracy();
+        obj.improveMarkerAccuracy;
         
     %}
     properties
@@ -116,7 +115,6 @@ classdef void_finder <handle
             %-------------------------------------------------------------
             %   for the acceleration to find all the possible start and stop
             %   points (comes in obj.initial_detections)
-            
             obj.processD2();
             %------------------------------------------------------------
             obj.IDCalibration(90); %input is 90 seconds, calibration period
@@ -241,16 +239,17 @@ classdef void_finder <handle
             %   markers in it. Hopefully in the future this function is
             %   not necessary. For now, next step is to suggest regions
             %   of spikes
-            disp('select a start and end point to remove the range from processed data')
-            disp('zoom to a new region after every two selections (a prompt will appear)\n\n')
-            
+
             continue_flag = input('would you like to select bad regions? (1 = yes, 0 = no)\n');
-            if (continue_flag ~= 1) && (continue_flag ~= 0)
-                error('unrecognized response')
+            if (continue_flag ~= 1)
+                return
             end
             
             obj.plotData('filtered');
             obj.plotCptMarks(1,'updated')
+            
+            disp('select a start and end point to remove the range from processed data')
+            disp('zoom to a new region after every two selections (a prompt will appear)\n\n')
             
             a = input('hit enter to begin. \nDo any panning/zooming before your response.\n');
             
@@ -260,9 +259,11 @@ classdef void_finder <handle
                 
                 if length(x) ~= 2
                     disp('not enough points')
+                    close
                     return
                 elseif x(1) > x(2)
                     disp('invalid point selection')
+                    close
                     return
                 end
                 
@@ -281,8 +282,9 @@ classdef void_finder <handle
                 obj.spike_end_times = [obj.spike_end_times, end_deletions];
                 
                 continue_flag = input('would you like to select more regions? (1 = yes, 0 = no)\nDo any panning/zooming before response\n');
-                if continue_flag ~= 1 && continue_flag ~= 0
-                    error('unrecognized response')
+                if continue_flag ~= 1 
+                    close
+                    return
                 end
             end 
             close
@@ -776,7 +778,6 @@ classdef void_finder <handle
             obj.marker_plot_start_h(end+1) =   plot(start_times,start_y,'ko', 'MarkerSize', 10);
             obj.marker_plot_end_h(end+1) =   plot(end_times,end_y, 'ks',  'MarkerSize', 10);
         end
-        
     end
     %----------------------------------------------------------------------
     methods % data extraction (voided volume, voiding time, etc...) and comparisons to user

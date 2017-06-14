@@ -1,20 +1,12 @@
 worked on improveStartMarkerAccuracy using glmfit and being more careful around the reset points
 	TODO: research the math behind glmfit
 	update: glmfit seems to be working much better, also doesn't yet throw warnings...
-	update: this still does not work all that well for the reset points. In fact, it 			actually does the opposite of what we want it to do at those points.
-		The good news is that for most other points it works pretty well.
+	update: usually works pretty well.
 
 next: started working on improving these methods around the reset points. Later task will be to improve the efficiency--current function calculates the slope on the time data. While this makes it easy to plot the lines found on the data, the actual calculation could just find the slope relative to the inidices, which would take out a step of loading even more data.
 ---------PROBLEM: the main issue is that the filtering around these huge jumps causes distortion of the data. This leads to a substantial change in the peaks in the acceleration, so start and end points are misplaced. one of the issues, however, is that it is not consistent how far away they end up...
-LATER UPDATE: works pretty well. Unfortunately, however, it's really messy/inefficient. I'd love some suggestions on how to improve it.
+LATER UPDATE: works pretty well. Unfortunately, however, code is really messy/inefficient. I'd love some suggestions on how to improve it.
 ---have to figure out how to remove the tiny/incorrect voids first. They cause errors because they happen so quickly that there is not enough data to calculate the slope on.
-
-QUESTION: need advice on how to remove long sections of really noisy data. For small spikes, it is enough to look nearby before and after, comparing values. However, if the data has a lot of spikes over a region (i.e. 200 seconds), how can I filter that out. Some of the spikes get removed, but not all. The current solution is that I have a function which allows the user to select regions of data to skip over. see obj.skipBadData()
-
-
-
-Moved on to look into what types of voids are too close together/too small. See list of data points of interest
-
 
 
 -------PROBLEM: sections of noisy data are still not filtered out. See the following:
@@ -24,3 +16,15 @@ Moved on to look into what types of voids are too close together/too small. See 
         obj.filterCurStream();
         obj.findPossibleVoids();
 look @ timeframe (6 : 6.2) *10^4 seconds
+need advice on how to remove long sections of really noisy data. For small spikes, it is enough to look nearby before and after, comparing values. However, if the data has a lot of spikes over a region (i.e. 200 seconds), how can I filter that out. Some of the spikes get removed, but not all. The current solution is that I have a function which allows the user to select regions of data to skip over. see skipBadData()
+
+TODO: if a reset occurs without a spike upward, it is just due to noise. see:
+161121
+stream3
+timeframe: 3.478 to 3.482
+
+Moved on to look into what types of voids are too close together/too small. See list of data points of interest
+
+Put together an example of what the GUI could look like so I can have a meeting with Danielle tomorrow
+
+Spent the last hour of the day working on the organization of the code and splitting things up to have their own classes

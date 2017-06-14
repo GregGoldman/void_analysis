@@ -11,5 +11,10 @@ in the usual test stream (see test_case_7)
 
 GSK\Phase 2\Control Group\161121\161121_analyzed.nss
 stream 2
-
+	(times *10^4 seconds)
 2.33 to 2.37
+6.15 to 6.45
+2.94 to 2.98
+2.8 to 2.85
+5.15 to 5.25
+
