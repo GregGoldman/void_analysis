@@ -20,7 +20,7 @@ x = done
 
 
 
-[]	deal with the resets (finding the magnitudes is not currently working -- need to string together the data so that the resests simply do not show up)
+[]	deal with the resets (finding the magnitudes is not currently working -- need to 		string together the data so that the resests simply do not show up)
 []	talk to danielle about various points of interest in the data
 []	merge together groups which are very close
 []	finish/fix code which pairs algorithm points with user points

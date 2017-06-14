@@ -14,13 +14,19 @@ classdef void_finder <handle
 
     %
     example:
-        tic
+        
         obj = analysis.void_finder;
         obj.loadExpt(4);
-        obj.loadStream(1,1);
+        obj.loadStream(1,2);
         obj.filterCurStream();
         obj.findPossibleVoids();
-        toc
+        
+      %  TODO: these two methods below should be run after removing voids which are
+      %        too small/too close together, otherwise errors tend to occur
+    
+        new_starts = obj.improveStartMarkerAccuracy();
+        new_ends = obj.improveEndMarkerAccuracy();
+        
     %}
     properties
         % file stuff
@@ -55,6 +61,9 @@ classdef void_finder <handle
         
         updated_start_times
         updated_end_times
+        
+        final_start_times
+        final_end_times
         
         calibration_start_times
         calibration_end_times
@@ -118,11 +127,13 @@ classdef void_finder <handle
             %------------------------------------------------------------
             obj.processD1();
             %------------------------------------------------------------
+            obj.skipBadData();
+            %------------------------------------------------------------
             obj.findPairs();
         end
     end
     methods % files and loading data
-                function findExptFiles(obj)
+        function findExptFiles(obj)
             %   find the list of files that we have to work with
             %   TODO: update the dba.files.raw.finder class to be able to
             %   handle this with a varargin for FILE_EXTENSION
@@ -217,20 +228,64 @@ classdef void_finder <handle
             obj.updated_start_times = setdiff(temp1,start_times);
             obj.updated_end_times = setdiff(temp2,end_times);
         end
-        function [start_times, end_times] = findResets(obj)%NYI
-            error('NYI')
+        function skipBadData(obj)
+            %
+            %   analysis.void_finder.highlightBadData();
+            %
+            %   A graph of the data must be up and open. TODO: test for
+            %   this
+            %
+            %   Brings up a graph of the filtered data with all of the
+            %   markers found just up until before pairing occurs. The user
+            %   can then select any data that appears spikey and has
+            %   markers in it. Hopefully in the future this function is
+            %   not necessary. For now, next step is to suggest regions
+            %   of spikes
+            disp('select a start and end point to remove the range from processed data')
+            disp('zoom to a new region after every two selections (a prompt will appear)\n\n')
             
+            continue_flag = input('would you like to select bad regions? (1 = yes, 0 = no)\n');
+            if (continue_flag ~= 1) && (continue_flag ~= 0)
+                error('unrecognized response')
+            end
             
+            obj.plotData('filtered');
+            obj.plotCptMarks(1,'updated')
             
-            window = 3; %seconds
-            num_iterations = floor(obj.filtered_cur_stream_data.n_samples/(window*obj.filtered_cur_stream_data.time.fs));
-            data = obj.filtered_cur_stream_data.d;
+            a = input('hit enter to begin. \nDo any panning/zooming before your response.\n');
             
-            for i = 1:num_iterations
-               %cur_idx = 
-               %cur_val = data 
+            while continue_flag
                 
+                [x,y] = ginput(2);
+                
+                if length(x) ~= 2
+                    disp('not enough points')
+                    return
+                elseif x(1) > x(2)
+                    disp('invalid point selection')
+                    return
+                end
+                
+                % find any markers within the range
+                start_times = obj.updated_start_times;
+                end_times = obj.updated_end_times;
+                
+                temp1 = (start_times > x(1)) & (start_times < x(2));
+                temp2 = (end_times > x(1)) & (end_times < x(2));
+                
+                start_deletions = start_times(temp1);
+                end_deletions = end_times(temp2);
+                
+                obj.updateDetections(start_deletions, end_deletions);
+                obj.spike_start_times = [obj.spike_start_times, start_deletions];
+                obj.spike_end_times = [obj.spike_end_times, end_deletions];
+                
+                continue_flag = input('would you like to select more regions? (1 = yes, 0 = no)\nDo any panning/zooming before response\n');
+                if continue_flag ~= 1 && continue_flag ~= 0
+                    error('unrecognized response')
+                end
             end 
+            close
         end
         function processD2(obj)
             %
@@ -433,121 +488,216 @@ classdef void_finder <handle
             
             obj.updateDetections(obj.unpaired_start_times,obj.unpaired_stop_times);
         end  
-        function x_intersect = improveStartMarkerAccuracy(obj)
+        function improveMarkerAccuracy(obj)
             %
-            %   obj.improveStartMarkerAccuracy();
+            %   analysis.void_finder.improveMarkerAccuracy();
             %
             %   Attempts to get closer to the actual start of the void
             %   event. Finds the slope just before and after the markers,
             %   the finding the intersections of the resultant befor/after
             %   lines. Uses the raw data for this calculation.
+            %
+            %   Treats reset points differently. Finds the max and min in
+            %   between reset start/end markers, then moves outward until
+            %   slopes approach consistent levels
+            %
+            %   TODO: give this its own class!!!!!! 
+            %   TODO: make it more efficient!!!!!
+            %   TODO: split up into functions!!!!
             
             start_times = obj.updated_start_times;
             end_times = obj.updated_end_times;
             
+            reset_start_times = obj.reset_start_times;
+            reset_end_times = obj.reset_end_times;
+            
             if length(start_times) ~= length(end_times)
-                error('dimensions mismatched')
+                error('dimensions of starts/ends mismatched')
+            elseif length(reset_start_times) ~= length(reset_end_times)
+                error('dimensions of reset points mismatched')
             end
             
             data = obj.cur_stream_data.d;
             
-            back_time_step = 2;
-            back_time_window = 1;
+            time_window = 1;
+            back_from_start = 2;
+            %   step the time distance back_from_start backward from the 
+            %   start point, then from that point take the datapoints 
+            %   forward in time_window
+            forward_from_start = 0;
+            %   step forward_from_start from the start point, then from
+            %   that point take the datapoints foward in time_window
             
-            forward_time_step = 0.5;
-            forward_time_window = 1;
-            
-            x_intersect = zeros(1,length(start_times));
+            back_from_end = 1;
+            forward_from_end = 2;
+
+            x_start_intersect = zeros(1,length(start_times));
+            x_end_intersect = zeros(1,length(end_times));
             
             for i = 1:length(start_times)
-                %   get the data from 2 seconds back to 1 second back
-                back_time = start_times(i) - back_time_step;
-                start_flat_idx = obj.cur_stream_data.time.getNearestIndices([back_time, back_time + back_time_window]);
-                
-                start_flat_idx_range = start_flat_idx(1):start_flat_idx(2);
-                start_flat_time_range = obj.cur_stream_data.time.getTimesFromIndices(start_flat_idx_range);
-                start_flat_vals = data(start_flat_idx_range);              
-                temp1 = polyfit(start_flat_time_range',start_flat_vals,1);
-                
-                forward_time = start_times(i) + forward_time_step;
-                start_slope_idx = obj.cur_stream_data.time.getNearestIndices([forward_time, forward_time + forward_time_window]);
-                
-                start_slope_idx_range = [start_slope_idx(1):start_slope_idx(2)];
-                start_slope_time_range =  obj.cur_stream_data.time.getTimesFromIndices(start_slope_idx_range);
-                start_slope_vals = data(start_slope_idx_range);
-                temp2 = polyfit(start_slope_time_range',start_slope_vals,1);
-                
-                temp3 = polyval(temp1,start_flat_time_range);
-                temp4 = polyval(temp2,start_slope_time_range);
-                %plot(start_flat_time_range,temp3,'k^','MarkerSize',4);
-                %plot(start_slope_time_range,temp4,'k^','MarkerSize',4);
+                if ~ismember(start_times(i),reset_start_times)
+                    %--------- processing for the start points------------
+                    %flat section before start
+                    back_time = start_times(i) - back_from_start;
+                    start_flat_idx = obj.cur_stream_data.time.getNearestIndices([back_time, back_time + time_window]);
+                    start_flat_idx_range = start_flat_idx(1):start_flat_idx(2);
+                    start_flat_time_range = obj.cur_stream_data.time.getTimesFromIndices(start_flat_idx_range);
+                    start_flat_vals = data(start_flat_idx_range);
+                    
+                    b1 = glmfit(start_flat_time_range,start_flat_vals);
+                    
+                    %steep section after start
+                    forward_time = start_times(i) + forward_from_start;
+                    start_slope_idx = obj.cur_stream_data.time.getNearestIndices([forward_time, forward_time + time_window]);
+                    start_slope_idx_range = [start_slope_idx(1):start_slope_idx(2)];
+                    start_slope_time_range =  obj.cur_stream_data.time.getTimesFromIndices(start_slope_idx_range);
+                    start_slope_vals = data(start_slope_idx_range);
+                    b2 = glmfit(start_slope_time_range,start_slope_vals);
+                    
+                    x0_start = start_times(i);
+                    x_start_intersect(i) = fzero(@(x) glmval(b1-b2,x,'identity'),x0_start);
+                    
+                    %--------- processing for the end points------------
+                    %flat section after end
+                    forward_time = end_times(i) + forward_from_end;
+                    start_flat_idx = obj.cur_stream_data.time.getNearestIndices([forward_time, forward_time + time_window]);
+                    start_flat_idx_range = start_flat_idx(1):start_flat_idx(2);
+                    start_flat_time_range = obj.cur_stream_data.time.getTimesFromIndices(start_flat_idx_range);
+                    start_flat_vals = data(start_flat_idx_range);
+                    b3 = glmfit(start_flat_time_range,start_flat_vals);
+                    
+                    back_time = end_times(i) + back_from_end;
+                    start_slope_idx = obj.cur_stream_data.time.getNearestIndices([back_time, back_time + time_window]);
+                    start_slope_idx_range = [start_slope_idx(1):start_slope_idx(2)];
+                    start_slope_time_range =  obj.cur_stream_data.time.getTimesFromIndices(start_slope_idx_range);
+                    start_slope_vals = data(start_slope_idx_range);
+                    b4= glmfit(start_slope_time_range,start_slope_vals);
+                    
+                    x0_end = start_times(i);
+                    x_end_intersect(i) = fzero(@(x) glmval(b3-b4,x,'identity'),x0_end);
+                    
+                else %	this is a reset point
+                    %   get the max and min within the region of data
+                    %   go left of max until slope approaches the slope
+                    %   even further to the left (within a threshold) and
+                    %   do the same thing to the right for the end points
+                    %
+                    %   TODO: update the times found in the reset times so
+                    %   that we can be more accurate in displaying them
+                    
+                    idx_edges = obj.cur_stream_data.time.getNearestIndices([start_times(i),end_times(i)]);
+                    idx_range = idx_edges(1):idx_edges(2);
+                    data_vals = data(idx_range);
+                    
+                    [~, max_loc] = max(data_vals);
+                    [~, min_loc] = min(data_vals);
+                    % need to convert these back to locations in the
+                    % overall dataset
+                    
+                    max_loc_in_data = idx_range(max_loc);
+                    min_loc_in_data = idx_range(min_loc);
 
-                x0 = start_times(i);
-                x_intersect(i) = fzero(@(x) polyval(temp1-temp2,x),x0);   
+                    %find slopes over 1 second windows, shifting each
+                    %window by 0.5 second each time.
+                    time_window = 1;
+                    time_increment = 0.5; 
+                    SLOPE_THRESH = 0.1;  %the allowable difference in slope
+                    %   (seems to be reasonable given the data)
+                    
+                    %   ----------process for the start points------------
+                    right_edge_idx = max_loc_in_data;
+                    right_edge_time = obj.cur_stream_data.time.getTimesFromIndices(right_edge_idx);
+                    left_edge_time = right_edge_time - time_window;
+                    left_edge_idx = obj.cur_stream_data.time.getNearestIndices(left_edge_time);
+ 
+                    idx_range  = left_edge_idx:right_edge_idx;
+                    time_range = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
+                    data_range = data(idx_range);
+                    
+                    b1 = glmfit(time_range,data_range);
+                    
+                    base_right_time = right_edge_time - 10; % go back 10 seconds to find proper slope
+                    base_left_time = base_right_time - time_window;
+                    
+                    base_idx_edges = obj.cur_stream_data.time.getNearestIndices([base_left_time,base_right_time]);
+                    base_idx_range = base_idx_edges(1):base_idx_edges(2);
+                    base_time_range = obj.cur_stream_data.time.getTimesFromIndices(base_idx_range);
+                    base_vals = data(base_idx_range);
+                    
+                    b_base = glmfit(base_time_range,base_vals);
+                    
+                    while abs(b_base(2) - b1(2)) > SLOPE_THRESH
+                        % keep incrementing to the left. Will then
+                        % hopefully get the start of the void within half
+                        % of a second.
+                        right_edge_time = right_edge_time - time_increment;
+                        
+                        right_edge_idx = obj.cur_stream_data.time.getNearestIndices(right_edge_time);
+                        left_edge_time = right_edge_time - time_window;
+                        left_edge_idx = obj.cur_stream_data.time.getNearestIndices(left_edge_time);
+                        
+                        idx_range  = left_edge_idx:right_edge_idx;
+                        time_range = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
+                        data_range = data(idx_range);
+                        
+                        b1 = glmfit(time_range,data_range);
+                    end
+                    x_start_intersect(i) = right_edge_time;
+                    
+                    %------------process for the end points ------------
+                    % basically reverses the order of the code above (left
+                    % to right instead of right to left)
+                    left_edge_idx = min_loc_in_data;
+                    left_edge_time = obj.cur_stream_data.time.getTimesFromIndices(left_edge_idx);
+                    right_edge_time = left_edge_time + time_window;
+                    right_edge_idx = obj.cur_stream_data.time.getNearestIndices(right_edge_time);
+ 
+                    idx_range  = left_edge_idx:right_edge_idx;
+                    time_range = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
+                    data_range = data(idx_range);
+                    
+                    b1 = glmfit(time_range,data_range);
+                    
+                    base_left_time = left_edge_time + 10; % go back 10 seconds to find proper slope
+                    base_right_time = base_left_time + time_window;
+                    
+                    base_idx_edges = obj.cur_stream_data.time.getNearestIndices([base_left_time,base_right_time]);
+                    base_idx_range = base_idx_edges(1):base_idx_edges(2);
+                    base_time_range = obj.cur_stream_data.time.getTimesFromIndices(base_idx_range);
+                    base_vals = data(base_idx_range);
+                    
+                    b_base = glmfit(base_time_range,base_vals);
+                    
+                    while abs(b_base(2) - b1(2)) > SLOPE_THRESH
+                        % keep incrementing to the left. Will then
+                        % hopefully get the start of the void within half
+                        % of a second.
+                        left_edge_time = left_edge_time + time_increment;
+                        
+                        left_edge_idx = obj.cur_stream_data.time.getNearestIndices(left_edge_time);
+                        right_edge_time = left_edge_time + time_window;
+                        right_edge_idx = obj.cur_stream_data.time.getNearestIndices(right_edge_time);
+                        
+                        idx_range  = left_edge_idx:right_edge_idx;
+                        time_range = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
+                        data_range = data(idx_range);
+                        
+                        b1 = glmfit(time_range,data_range);
+                    end
+                    x_end_intersect(i) = left_edge_time;
+                end  
             end
+            obj.final_start_times = x_start_intersect; 
+            obj.final_end_times = x_end_intersect;
             
-            intersect_idx = obj.cur_stream_data.time.getNearestIndices(x_intersect);
-            intersect_vals = data(intersect_idx);
+            start_intersect_idx = obj.cur_stream_data.time.getNearestIndices(x_start_intersect);
+            start_intersect_vals = data(start_intersect_idx);
             hold on
-            plot(x_intersect, intersect_vals, 'kd','MarkerSize', 10)
-        end
-        function x_intersect = improveEndMarkerAccuracy(obj)
-            %
-            %   obj.improveEndMarkerAccuracy();
-            %
-            %   Attempts to get closer to the actual start of the void
-            %   event. Finds the slope just before and after the markers,
-            %   the finding the intersections of the resultant befor/after
-            %   lines. Uses the raw data for this calculation.
+            plot(x_start_intersect, start_intersect_vals, 'kd','MarkerSize', 10)
             
-            start_times = obj.updated_start_times;
-            end_times = obj.updated_end_times;
-            
-            if length(start_times) ~= length(end_times)
-                error('dimensions mismatched')
-            end
-            
-            data = obj.cur_stream_data.d;
-            
-            back_time_step = 1;
-            back_time_window = 1;
-            % so exclude the 0.5 closest seconds to the marker
-            
-            forward_time_step = 2;
-            forward_time_window = 2;
-            
-            x_intersect = zeros(1,length(start_times));
-            
-            for i = 1:length(end_times)
-                back_time = end_times(i) - back_time_step;
-                forward_time = end_times(i) + forward_time_step;
-                start_flat_idx = obj.cur_stream_data.time.getNearestIndices([forward_time, forward_time + forward_time_window]);
-                
-                start_flat_idx_range = start_flat_idx(1):start_flat_idx(2);
-                start_flat_time_range = obj.cur_stream_data.time.getTimesFromIndices(start_flat_idx_range);
-                start_flat_vals = data(start_flat_idx_range);              
-                temp1 = polyfit(start_flat_time_range',start_flat_vals,1);
-                
-                start_slope_idx = obj.cur_stream_data.time.getNearestIndices([back_time, back_time + back_time_window]);
-                
-                start_slope_idx_range = [start_slope_idx(1):start_slope_idx(2)];
-                start_slope_time_range =  obj.cur_stream_data.time.getTimesFromIndices(start_slope_idx_range);
-                start_slope_vals = data(start_slope_idx_range);
-                temp2 = polyfit(start_slope_time_range',start_slope_vals,1);
-                
-                temp3 = polyval(temp1,start_flat_time_range);
-                temp4 = polyval(temp2,start_slope_time_range);
-                %plot(start_flat_time_range,temp3,'k^','MarkerSize',4);
-                %plot(start_slope_time_range,temp4,'k^','MarkerSize',4);
-
-                x0 = start_times(i);
-                x_intersect(i) = fzero(@(x) polyval(temp1-temp2,x),x0);   
-            end
-            
-            intersect_idx = obj.cur_stream_data.time.getNearestIndices(sort(x_intersect));
-            intersect_vals = data(intersect_idx);
-            hold on
-            plot(x_intersect, intersect_vals, 'kp','MarkerSize', 10)
+            end_intersect_idx = obj.cur_stream_data.time.getNearestIndices(x_end_intersect);
+            end_intersect_vals = data(end_intersect_idx);
+            plot(x_end_intersect, end_intersect_vals, 'kp', 'MarkerSize', 10)
         end
     end
     %----------------------------------------------------------------------
@@ -811,7 +961,142 @@ classdef void_finder <handle
         end
     end
     %----------------------------------------------------------------------
-    methods (Hidden) % methods which don't work yet
+    methods (Hidden) % methods which don't work yet or are out of date
+                function x_intersect = improveStartMarkerAccuracy(obj)
+            %
+            %   obj.improveStartMarkerAccuracy();
+            %
+            %   Attempts to get closer to the actual start of the void
+            %   event. Finds the slope just before and after the markers,
+            %   the finding the intersections of the resultant befor/after
+            %   lines. Uses the raw data for this calculation.
+            
+            start_times = obj.updated_start_times;
+            end_times = obj.updated_end_times;
+            
+            if length(start_times) ~= length(end_times)
+                error('dimensions mismatched')
+            end
+            
+            data = obj.cur_stream_data.d;
+            
+            back_time_step = 2;
+            back_time_window = 1;
+            
+            forward_time_step = 0;
+            forward_time_window = 1;
+            
+            x_intersect = zeros(1,length(start_times));
+            
+            for i = 1:length(start_times)
+                %   get the data from 2 seconds back to 1 second back
+                back_time = start_times(i) - back_time_step;
+                start_flat_idx = obj.cur_stream_data.time.getNearestIndices([back_time, back_time + back_time_window]);
+                
+                start_flat_idx_range = start_flat_idx(1):start_flat_idx(2);
+                start_flat_time_range = obj.cur_stream_data.time.getTimesFromIndices(start_flat_idx_range);
+                start_flat_vals = data(start_flat_idx_range);              
+              %  temp1 = polyfit(start_flat_time_range',start_flat_vals,1);
+                [b1 dev1 stats1] = glmfit(start_flat_time_range,start_flat_vals);
+                %TODO: after debugging, won't need dev or stats
+                
+                
+                forward_time = start_times(i) + forward_time_step;
+                start_slope_idx = obj.cur_stream_data.time.getNearestIndices([forward_time, forward_time + forward_time_window]);
+                
+                start_slope_idx_range = [start_slope_idx(1):start_slope_idx(2)];
+                start_slope_time_range =  obj.cur_stream_data.time.getTimesFromIndices(start_slope_idx_range);
+                start_slope_vals = data(start_slope_idx_range);
+               % temp2 = polyfit(start_slope_time_range',start_slope_vals,1);
+                [b2 dev2 stats2] = glmfit(start_slope_time_range,start_slope_vals);
+
+               
+                temp3 = glmval(b1,start_flat_time_range,'identity');
+                temp4 = glmval(b2,start_slope_time_range,'identity');
+                plot(start_flat_time_range,temp3,'k:','MarkerSize',4);
+                plot(start_slope_time_range,temp4,'k:','MarkerSize',4);
+                 %{
+                figure
+                histogram(stats1.resid,20)
+                figure
+                histogram(stats2.resid)
+                %}
+                
+                x0 = start_times(i);
+                x_intersect(i) = fzero(@(x) glmval(b1-b2,x,'identity'),x0);
+            end
+            intersect_idx = obj.cur_stream_data.time.getNearestIndices(x_intersect);
+            intersect_vals = data(intersect_idx);
+            hold on
+            plot(x_intersect, intersect_vals, 'kd','MarkerSize', 10)
+        end
+        function x_intersect = improveEndMarkerAccuracy(obj)
+            %
+            %   obj.improveEndMarkerAccuracy();
+            %
+            %   Attempts to get closer to the actual start of the void
+            %   event. Finds the slope just before and after the markers,
+            %   the finding the intersections of the resultant befor/after
+            %   lines. Uses the raw data for this calculation.
+            
+            start_times = obj.updated_start_times;
+            end_times = obj.updated_end_times;
+            
+            if length(start_times) ~= length(end_times)
+                error('dimensions mismatched')
+            end
+            
+            data = obj.cur_stream_data.d;
+            
+            back_time_step = 1;
+            back_time_window = 1;
+            % so exclude the 0.5 closest seconds to the marker
+            
+            forward_time_step = 2;
+            forward_time_window = 1;
+            
+            x_intersect = zeros(1,length(start_times));
+            
+            for i = 1:length(end_times)
+                back_time = end_times(i) - back_time_step;
+                forward_time = end_times(i) + forward_time_step;
+                start_flat_idx = obj.cur_stream_data.time.getNearestIndices([forward_time, forward_time + forward_time_window]);
+                
+                start_flat_idx_range = start_flat_idx(1):start_flat_idx(2);
+                start_flat_time_range = obj.cur_stream_data.time.getTimesFromIndices(start_flat_idx_range);
+                start_flat_vals = data(start_flat_idx_range);
+                %temp1 = polyfit(start_flat_time_range',start_flat_vals,1);
+                [b1 dev1 stats1] = glmfit(start_flat_time_range,start_flat_vals);
+                        
+                start_slope_idx = obj.cur_stream_data.time.getNearestIndices([back_time, back_time + back_time_window]);
+                
+                start_slope_idx_range = [start_slope_idx(1):start_slope_idx(2)];
+                start_slope_time_range =  obj.cur_stream_data.time.getTimesFromIndices(start_slope_idx_range);
+                start_slope_vals = data(start_slope_idx_range);
+                %temp2 = polyfit(start_slope_time_range',start_slope_vals,1);
+                [b2 dev2 stats2] = glmfit(start_slope_time_range,start_slope_vals);
+                
+                
+                temp3 = glmval(b1,start_flat_time_range,'identity');
+                temp4 = glmval(b2,start_slope_time_range,'identity');
+                plot(start_flat_time_range,temp3,'k:','MarkerSize',4);
+                plot(start_slope_time_range,temp4,'k:','MarkerSize',4);
+                   %{
+                figure
+                histogram(stats1.resid,20)
+                figure
+                histogram(stats2.resid)
+                %}
+
+                x0 = start_times(i);
+                x_intersect(i) = fzero(@(x) glmval(b1-b2,x,'identity'),x0);
+            end
+            
+            intersect_idx = obj.cur_stream_data.time.getNearestIndices(sort(x_intersect));
+            intersect_vals = data(intersect_idx);
+            hold on
+            plot(x_intersect, intersect_vals, 'kp','MarkerSize', 10)
+        end
         function compareAndPlotMarkers(obj)
             %compares the user-marked stuff to the cpt-marked stuff
             
