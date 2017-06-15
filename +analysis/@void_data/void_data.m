@@ -56,7 +56,11 @@ classdef void_data < handle
         unpaired_start_times
         unpaired_stop_times
         
-        %fecal void, food pellet, etc
+        % magnitude issues
+        too_small_start_times
+        too_small_end_times
+        
+        % fecal void, food pellet, etc (slope issues)
         solid_void_start_times
         solid_void_end_times
 
@@ -65,6 +69,9 @@ classdef void_data < handle
         u_vt
         c_vv
         c_vt
+        
+        u_slopes
+        c_slopes
 
         comparison_result          % analysis.comparison_result
     end
@@ -171,6 +178,7 @@ classdef void_data < handle
 
             obj.u_vv = obj.getVoidedVolume(start_markers, end_markers, obj.u_reset_start_times, obj.u_reset_stop_times);
             obj.u_vt = obj.getVoidingTime(start_markers, end_markers);
+            obj.u_slopes = obj.getSlopes(obj.u_vv, obj.u_vt);
         end
         function processCptMarkedPts(obj)
             %
@@ -188,8 +196,9 @@ classdef void_data < handle
             
             obj.c_vv = obj.getVoidedVolume(start_markers, end_markers, reset_starts, reset_stops);
             obj.c_vt = obj.getVoidingTime(start_markers, end_markers);
+            obj.c_slopes = obj.getSlopes(obj.c_vv,obj.c_vt);
         end
-        function vv = getVoidedVolume(~,start_markers, end_markers, reset_starts, reset_stops)
+        function vv = getVoidedVolume(obj,start_markers, end_markers, reset_starts, reset_stops)
             %
             %   vv = obj.getVoidedVolume(start_markers, end_markers)
             %   
@@ -225,11 +234,11 @@ classdef void_data < handle
             for k = 1:length(start_markers)
                 s_left_edge = start_markers(k) - TIME_WINDOW;
                 s_right_edge = start_markers(k);
-                start_data = obj.h.data.getDataFromTimeRange('raw', [s_left_edge, s_right_edge])
+                start_data = obj.h.data.getDataFromTimeRange('raw', [s_left_edge, s_right_edge]);
                 start_avg = mean(start_data);
                 
                 e_left_edge = end_markers(k);
-                e_right_edge = end_markers(k) + time_window;
+                e_right_edge = end_markers(k) + TIME_WINDOW;
                 end_data = obj.h.data.getDataFromTimeRange('raw', [e_left_edge, e_right_edge]);
                 end_avg = mean(end_data);
                 
@@ -263,7 +272,20 @@ classdef void_data < handle
             end
             vt = end_markers - start_markers;
         end
-        function [start_times end_times] = getMarkersInTimeRange(obj, start_time, end_time)
+        function slopes = getSlopes(~, vv, vt)
+            %
+            %   obj.getSlopes(source)
+            %
+            %   Finds the slopes of each of the voids
+            %
+            %   Outputs:
+            %   ---------
+            %   - slopes: an array of the slopes for each corresponding
+            %             input vv/vt pair
+
+            slopes = vv./vt;   
+        end
+        function [start_times, end_times] = getMarkersInTimeRange(obj, start_time, end_time)
             %
             %    [start_times end_times] =
             %    obj.getMarkersInTimeRange(start_times, end_times)

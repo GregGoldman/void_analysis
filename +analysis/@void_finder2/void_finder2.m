@@ -18,19 +18,21 @@ classdef void_finder2 <handle
     %
     example:
        
-        tic
         obj = analysis.void_finder2;
         obj.data.loadExpt(4);
-        obj.data.getStream(4,2);
-        toc
-        
+        obj.data.getStream(4,3);
         obj.findPossibleVoids();
-        
-      %  TODO: these two methods below should be run after removing voids which are
-      %        too small/too close together, otherwise errors tend to occur
+          % this will bring up an option to remove bad data somewhere in
+          % the middle. Right now, it is important that this step is taken
+          % until I can improve the recognition of those regions
+
+          % to see the results:
+        obj.data.plotData('raw');
+        obj.void_data.plotMarkers('raw','cpt');
+        obj.void_data.plotMarkers('raw','user');
     
-        obj.improveMarkerAccuracy;
-        
+          % * are computer-found starts, + are computer-found stops
+          % circles are user starts, squares are user stops
     %}
     properties
         data                        % analysis.data
@@ -65,12 +67,16 @@ classdef void_finder2 <handle
             obj.skipBadData();
             %------------------------------------------------------------
             obj.findPairs();
+            %----------------------------------------------------------
+            obj.findVoidType(2);
         end
     end
     %----------------------------------------------------------------------
     methods % data processing methods and filtering
-        % processD1 (has its own file)
-        % findSpikes(has its own file)
+        % processD1             (has its own file)
+        % findSpikes            (has its own file)
+        % improveMarkerAccuracy (has its own file)
+        improveMarkerAccuracy(obj)
         function processD2(obj)
             %
             %   obj.processD2();
@@ -126,11 +132,12 @@ classdef void_finder2 <handle
             disp('select a start and end point to remove the range from processed data')
             disp('zoom to a new region after every two selections (a prompt will appear)\n\n')
             
-            a = input('hit enter to begin. \nDo any panning/zooming before your response.\n');
+            disp('hit enter to begin. \nDo any panning/zooming before your response.\n');
+            pause
             
             while continue_flag
                 
-                [x,y] = ginput(2);
+                [x,~] = ginput(2);
                 
                 if length(x) ~= 2
                     disp('not enough points')
@@ -209,225 +216,64 @@ classdef void_finder2 <handle
             
             obj.void_data.updateDetections(obj.void_data.unpaired_start_times,obj.void_data.unpaired_stop_times);
         end  
-        function findType(obj)
+        function findVoidType(obj, noise_multiplier)
             %
             %   obj.findType();
             %
             %   classifies the voiding events by looking at voided volume,
             %   voiding time, proximity to other void events, etc...
-
-            
-        end
-        function improveMarkerAccuracy(obj)
             %
-            %   analysis.void_finder.improveMarkerAccuracy();
-            %
-            %   Attempts to get closer to the actual start of the void
-            %   event. Finds the slope just before and after the markers,
-            %   the finding the intersections of the resultant befor/after
-            %   lines. Uses the raw data for this calculation.
-            %
-            %   Treats reset points differently. Finds the max and min in
-            %   between reset start/end markers, then moves outward until
-            %   slopes approach consistent levels
-            %
-            %   TODO: give this its own class!!!!!! 
-            %   TODO: make it more efficient!!!!!
-            %   TODO: split up into functions!!!!
+            %   Inputs:
+            %   -----------
+            %   - noise_multiplier: (double) voids must have a voided
+            %                        volume at least this many times the 
+            %                        magnitude of the noise (min to max) 
+            %                        to be considered a valid void
             
-            start_times = obj.updated_start_times;
-            end_times = obj.updated_end_times;
             
-            reset_start_times = obj.reset_start_times;
-            reset_end_times = obj.reset_end_times;
+            % First Step: pcik out the voids which have a magnitude under
+            % the required threshold (noise_multiplier * magnitude_of_noise)
+            %   - find the magnitude of the noise assuming that the
+            %     magnitude is roughly constant everywhere
+            obj.void_data.processCptMarkedPts;
             
-            if length(start_times) ~= length(end_times)
-                error('dimensions of starts/ends mismatched')
-            elseif length(reset_start_times) ~= length(reset_end_times)
-                error('dimensions of reset points mismatched')
-            end
             
-            data = obj.cur_stream_data.d;
-            
+            time_back = 5;
             time_window = 1;
-            back_from_start = 2;
-            %   step the time distance back_from_start backward from the 
-            %   start point, then from that point take the datapoints 
-            %   forward in time_window
-            forward_from_start = 0;
-            %   step forward_from_start from the start point, then from
-            %   that point take the datapoints foward in time_window
+            start_time = obj.void_data.updated_start_times(1) - time_back;
+            end_time = start_time + time_window;
+            data_range = obj.data.getDataFromTimeRange('raw',[start_time,end_time]);
+            top = max(data_range);
+            bottom = min(data_range);
             
-            back_from_end = 1;
-            forward_from_end = 2;
-
-            x_start_intersect = zeros(1,length(start_times));
-            x_end_intersect = zeros(1,length(end_times));
+            noise_mag = abs(top - bottom);
+            min_volume = noise_multiplier * noise_mag;
             
-            for i = 1:length(start_times)
-                if ~ismember(start_times(i),reset_start_times)
-                    %--------- processing for the start points------------
-                    %flat section before start
-                    back_time = start_times(i) - back_from_start;
-                    start_flat_idx = obj.cur_stream_data.time.getNearestIndices([back_time, back_time + time_window]);
-                    start_flat_idx_range = start_flat_idx(1):start_flat_idx(2);
-                    start_flat_time_range = obj.cur_stream_data.time.getTimesFromIndices(start_flat_idx_range);
-                    start_flat_vals = data(start_flat_idx_range);
-                    
-                    b1 = glmfit(start_flat_time_range,start_flat_vals);
-                    
-                    %steep section after start
-                    forward_time = start_times(i) + forward_from_start;
-                    start_slope_idx = obj.cur_stream_data.time.getNearestIndices([forward_time, forward_time + time_window]);
-                    start_slope_idx_range = [start_slope_idx(1):start_slope_idx(2)];
-                    start_slope_time_range =  obj.cur_stream_data.time.getTimesFromIndices(start_slope_idx_range);
-                    start_slope_vals = data(start_slope_idx_range);
-                    b2 = glmfit(start_slope_time_range,start_slope_vals);
-                    
-                    x0_start = start_times(i);
-                    x_start_intersect(i) = fzero(@(x) glmval(b1-b2,x,'identity'),x0_start);
-                    
-                    %--------- processing for the end points------------
-                    %flat section after end
-                    forward_time = end_times(i) + forward_from_end;
-                    start_flat_idx = obj.cur_stream_data.time.getNearestIndices([forward_time, forward_time + time_window]);
-                    start_flat_idx_range = start_flat_idx(1):start_flat_idx(2);
-                    start_flat_time_range = obj.cur_stream_data.time.getTimesFromIndices(start_flat_idx_range);
-                    start_flat_vals = data(start_flat_idx_range);
-                    b3 = glmfit(start_flat_time_range,start_flat_vals);
-                    
-                    back_time = end_times(i) + back_from_end;
-                    start_slope_idx = obj.cur_stream_data.time.getNearestIndices([back_time, back_time + time_window]);
-                    start_slope_idx_range = [start_slope_idx(1):start_slope_idx(2)];
-                    start_slope_time_range =  obj.cur_stream_data.time.getTimesFromIndices(start_slope_idx_range);
-                    start_slope_vals = data(start_slope_idx_range);
-                    b4= glmfit(start_slope_time_range,start_slope_vals);
-                    
-                    x0_end = start_times(i);
-                    x_end_intersect(i) = fzero(@(x) glmval(b3-b4,x,'identity'),x0_end);
-                    
-                else %	this is a reset point
-                    %   get the max and min within the region of data
-                    %   go left of max until slope approaches the slope
-                    %   even further to the left (within a threshold) and
-                    %   do the same thing to the right for the end points
-                    %
-                    %   TODO: update the times found in the reset times so
-                    %   that we can be more accurate in displaying them
-                    
-                    idx_edges = obj.cur_stream_data.time.getNearestIndices([start_times(i),end_times(i)]);
-                    idx_range = idx_edges(1):idx_edges(2);
-                    data_vals = data(idx_range);
-                    
-                    [~, max_loc] = max(data_vals);
-                    [~, min_loc] = min(data_vals);
-                    % need to convert these back to locations in the
-                    % overall dataset
-                    
-                    max_loc_in_data = idx_range(max_loc);
-                    min_loc_in_data = idx_range(min_loc);
-
-                    %find slopes over 1 second windows, shifting each
-                    %window by 0.5 second each time.
-                    time_window = 1;
-                    time_increment = 0.5; 
-                    SLOPE_THRESH = 0.1;  %the allowable difference in slope
-                    %   (seems to be reasonable given the data)
-                    
-                    %   ----------process for the start points------------
-                    right_edge_idx = max_loc_in_data;
-                    right_edge_time = obj.cur_stream_data.time.getTimesFromIndices(right_edge_idx);
-                    left_edge_time = right_edge_time - time_window;
-                    left_edge_idx = obj.cur_stream_data.time.getNearestIndices(left_edge_time);
- 
-                    idx_range  = left_edge_idx:right_edge_idx;
-                    time_range = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
-                    data_range = data(idx_range);
-                    
-                    b1 = glmfit(time_range,data_range);
-                    
-                    base_right_time = right_edge_time - 10; % go back 10 seconds to find proper slope
-                    base_left_time = base_right_time - time_window;
-                    
-                    base_idx_edges = obj.cur_stream_data.time.getNearestIndices([base_left_time,base_right_time]);
-                    base_idx_range = base_idx_edges(1):base_idx_edges(2);
-                    base_time_range = obj.cur_stream_data.time.getTimesFromIndices(base_idx_range);
-                    base_vals = data(base_idx_range);
-                    
-                    b_base = glmfit(base_time_range,base_vals);
-                    
-                    while abs(b_base(2) - b1(2)) > SLOPE_THRESH
-                        % keep incrementing to the left. Will then
-                        % hopefully get the start of the void within half
-                        % of a second.
-                        right_edge_time = right_edge_time - time_increment;
-                        
-                        right_edge_idx = obj.cur_stream_data.time.getNearestIndices(right_edge_time);
-                        left_edge_time = right_edge_time - time_window;
-                        left_edge_idx = obj.cur_stream_data.time.getNearestIndices(left_edge_time);
-                        
-                        idx_range  = left_edge_idx:right_edge_idx;
-                        time_range = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
-                        data_range = data(idx_range);
-                        
-                        b1 = glmfit(time_range,data_range);
-                    end
-                    x_start_intersect(i) = right_edge_time;
-                    
-                    %------------process for the end points ------------
-                    % basically reverses the order of the code above (left
-                    % to right instead of right to left)
-                    left_edge_idx = min_loc_in_data;
-                    left_edge_time = obj.cur_stream_data.time.getTimesFromIndices(left_edge_idx);
-                    right_edge_time = left_edge_time + time_window;
-                    right_edge_idx = obj.cur_stream_data.time.getNearestIndices(right_edge_time);
- 
-                    idx_range  = left_edge_idx:right_edge_idx;
-                    time_range = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
-                    data_range = data(idx_range);
-                    
-                    b1 = glmfit(time_range,data_range);
-                    
-                    base_left_time = left_edge_time + 10; % go back 10 seconds to find proper slope
-                    base_right_time = base_left_time + time_window;
-                    
-                    base_idx_edges = obj.cur_stream_data.time.getNearestIndices([base_left_time,base_right_time]);
-                    base_idx_range = base_idx_edges(1):base_idx_edges(2);
-                    base_time_range = obj.cur_stream_data.time.getTimesFromIndices(base_idx_range);
-                    base_vals = data(base_idx_range);
-                    
-                    b_base = glmfit(base_time_range,base_vals);
-                    
-                    while abs(b_base(2) - b1(2)) > SLOPE_THRESH
-                        % keep incrementing to the left. Will then
-                        % hopefully get the start of the void within half
-                        % of a second.
-                        left_edge_time = left_edge_time + time_increment;
-                        
-                        left_edge_idx = obj.cur_stream_data.time.getNearestIndices(left_edge_time);
-                        right_edge_time = left_edge_time + time_window;
-                        right_edge_idx = obj.cur_stream_data.time.getNearestIndices(right_edge_time);
-                        
-                        idx_range  = left_edge_idx:right_edge_idx;
-                        time_range = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
-                        data_range = data(idx_range);
-                        
-                        b1 = glmfit(time_range,data_range);
-                    end
-                    x_end_intersect(i) = left_edge_time;
-                end  
-            end
-            obj.final_start_times = x_start_intersect; 
-            obj.final_end_times = x_end_intersect;
+            vv = obj.void_data.c_vv;
             
-            start_intersect_idx = obj.cur_stream_data.time.getNearestIndices(x_start_intersect);
-            start_intersect_vals = data(start_intersect_idx);
-            hold on
-            plot(x_start_intersect, start_intersect_vals, 'kd','MarkerSize', 10)
+            too_small = (vv < min_volume);
             
-            end_intersect_idx = obj.cur_stream_data.time.getNearestIndices(x_end_intersect);
-            end_intersect_vals = data(end_intersect_idx);
-            plot(x_end_intersect, end_intersect_vals, 'kp', 'MarkerSize', 10)
+            obj.void_data.too_small_start_times = obj.void_data.updated_start_times(too_small);
+            obj.void_data.too_small_end_times = obj.void_data.updated_end_times(too_small);
+            
+            obj.void_data.updateDetections(obj.void_data.too_small_start_times, obj.void_data.too_small_end_times);
+            
+            % at this point, we have gotten rid of all of the super small
+            % voids, so we it is time to make our markers more accurate  
+            obj.improveMarkerAccuracy();
+            
+            obj.void_data.processCptMarkedPts();
+            
+           
+            MAX_SLOPE = 0.7;
+            temp = obj.void_data.c_slopes > MAX_SLOPE;
+            bad_starts = obj.void_data.updated_start_times(temp);
+            bad_ends = obj.void_data.updated_end_times(temp);
+            
+            obj.void_data.solid_void_start_times = bad_starts;
+            obj.void_data.solid_void_end_times = bad_ends;
+            
+            obj.void_data.updateDetections(bad_starts, bad_ends);
         end
     end
     %----------------------------------------------------------------------
@@ -467,7 +313,7 @@ classdef void_finder2 <handle
             %--------------------------------------------------------
             %   finding the correct start indices
             %   TODO: fix the variable naming in here!!!!
-            [a b] = ismembertol(u_start_times,start_times,tolerance,'DataScale',1);
+            [a, b] = ismembertol(u_start_times,start_times,tolerance,'DataScale',1);
             % a is logical mask of where the data in u_start_times is within
             % tolerance of the data in start_times
             % b contains the indices in start times for each value in

@@ -152,7 +152,7 @@ classdef data < handle
             idxs = obj.cur_stream_data.time.getNearestIndices(time_points);
             vals = d(idxs);
         end
-        function vals = getDataFromTimeRange(obj,source,time_range)
+        function [vals, varargout] = getDataFromTimeRange(obj,source,time_range)
             %
             %   obj.getDataFromTimeRange(time_range)
             %
@@ -192,6 +192,12 @@ classdef data < handle
             end
             
             vals = d(idx_range);
+            
+            if nargout == 2
+            % return the time array as well
+            varargout{1} = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
+            end
+            
         end
     end
 end

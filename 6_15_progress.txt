@@ -8,3 +8,7 @@ We have to be careful when these occur really close to a regular void (w/in a se
 
 
 Continued restructuring code
+
+TODO: create set.property methods for when any of the properties are updated. Include a call to updateDetections so that this doesn't have to be written explicitely every single time.
+
+TODO: check for markers which occur within less than 2 seconds of one another
