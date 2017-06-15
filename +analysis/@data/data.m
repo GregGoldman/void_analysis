@@ -31,11 +31,11 @@ classdef data < handle
     end
     
     methods
-        function obj = analysis.data(h)
+        function obj = data(h)
             obj.h = h;  % the void_finder class which holds it
             
             obj.save_location = 'C:\Data\nss_matlab_objs';
-            obj.findExptFiles(obj);
+            obj.findExptFiles();
         end
         function findExptFiles(obj)
             %
@@ -72,31 +72,31 @@ classdef data < handle
             %           obj.expt_file_list_result.file_paths
             
             temp = length(obj.expt_file_list_result.file_paths);
-            obj.loaded_expts = cell(1,temp)
+            obj.loaded_expts = cell(1,temp);
             obj.loaded_expts{index} = notocord.file(obj.expt_file_list_result.file_paths{index});
-            function getStream(obj, expt_idx, stream_num)
-                %
-                %   obj.getStream(expt_idx, stream_num)
-                %
-                %   Load, filter, and differentiate (twice) the stream
-                %   indicated by the input arguments (see below)
-                %
-                %   inputs:
-                %   ------------
-                %   - expt_idx: integer index of the experiment to load
-                %               from obj.loaded_expts
-                %   - stream_num: integer index of the stream number to
-                %                 load from the experiment indicated by
-                %                 expt_idx
-                
-                obj.cur_expt = obj.loaded_expts{expt_idx};
-                obj.cur_stream_idx = stream_num;
-                
-                h__markers(obj,stream_num);
-                h__filter(obj);
-                obj.d1 = obj.filtered_cur_stream_data.dif2;
-                obj.d2 = obj.d1.dif2;
-            end
+        end
+        function getStream(obj, expt_idx, stream_num)
+            %
+            %   obj.getStream(expt_idx, stream_num)
+            %
+            %   Load, filter, and differentiate (twice) the stream
+            %   indicated by the input arguments (see below)
+            %
+            %   inputs:
+            %   ------------
+            %   - expt_idx: integer index of the experiment to load
+            %               from obj.loaded_expts
+            %   - stream_num: integer index of the stream number to
+            %                 load from the experiment indicated by
+            %                 expt_idx
+            
+            obj.cur_expt = obj.loaded_expts{expt_idx};
+            obj.cur_stream_idx = stream_num;
+            
+            h__markersAndStream(obj,stream_num);
+            h__filter(obj);
+            obj.d1 = obj.filtered_cur_stream_data.dif2;
+            obj.d2 = obj.d1.dif2;
         end
         function plotData(obj,option)
             %
@@ -128,27 +128,70 @@ classdef data < handle
             
             d = obj.cur_stream_data.d;
         end
-        function vals = getDataFromTimeRange(obj,time_range)
+        function vals = getDataFromTimePoints(obj,source,time_points)
+            %
+            %   obj.getDataFromTimePoints(time_range)
+            %
+            %   Given an array of points in time, attempts to find the
+            %   closest indices in the data and returns those values only
+            %
+            %   inputs:
+            %   ----------
+            %   - source: 'filtered' or 'raw'
+            %   - time_range: double array of time points
+            %
+            switch lower(source)
+                case 'filtered'
+                    d = obj.filtered_cur_stream_data.d;
+                case 'raw'
+                    d = obj.cur_stream_data.d;
+                otherwise
+                    error('unrecognized data source')
+            end
+            
+            idxs = obj.cur_stream_data.time.getNearestIndices(time_points);
+            vals = d(idxs);
+        end
+        function vals = getDataFromTimeRange(obj,source,time_range)
             %
             %   obj.getDataFromTimeRange(time_range)
             %
             %   Given an array of points in time, attempts to find the
-            %   closest indices in the data and returns those values
+            %   closest indices in the data and returns those values and
+            %   all in between
             %
             %   inputs:
             %   ----------
-            %   - time_range: double array of time points
+            %   - source: 'filtered' or 'raw'
+            %   - time_range: double array of time points which specify the
+            %      edges of a range
             %
+            switch lower(source)
+                case 'filtered'
+                    d = obj.filtered_cur_stream_data.d;
+                case 'raw'
+                    d = obj.cur_stream_data.d;
+                otherwise
+                    error('unrecognized data source')
+            end
             
-            d = obj.cur_stream_data.d;
-            idx = obj.cur_stream_data.time.getNearestIndices(time_range);
-            vals = d(idx);
-        end
-        function idxs = getNearestIndices(obj,time_range)
+            % if time_range is a single point, we just want the data at
+            % that specific point
             
-        end
-        function times = getTimesFromIndices(obj,idxs)
+            % if time_range is two points, we want the data within that
+            % range
             
+            if length(time_range) == 2
+                start_idx = obj.cur_stream_data.time.getNearestIndices(time_range(1));
+                end_idx = obj.cur_stream_data.time.getNearestIndices(time_range(2));
+                idx_range = start_idx:end_idx;
+            elseif length(time_range) == 1
+                idx_range = obj.cur_stream_data.time.getNearestIndices(time_range);
+            else
+                error('unrecognized time range, NYI')
+            end
+            
+            vals = d(idx_range);
         end
     end
 end
@@ -161,7 +204,7 @@ filter = sci.time_series.filter.butter(ORDER,FREQUENCY,TYPE);
 obj.filtered_cur_stream_data = obj.cur_stream_data.filter(filter);
 
 end
-function h__markers(obj, stream_num)
+function h__markersAndStream(obj, stream_num)
 
 obj.h.void_data.cur_markers_idx = [stream_num+1, stream_num + 9];
 % need to figure out if there are both start and end markers
@@ -179,12 +222,15 @@ end
 if (count(1) == 9) %this is definitely not a good way to do this...
     error('no end markers, NYI')
 end
-obj.h.void_data.user_start_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',cur_markers_idx(1))]);
-obj.h.void_data.user_end_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',cur_markers_idx(2))]);
-
+obj.h.void_data.user_start_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.h.void_data.cur_markers_idx(1))]);
+obj.h.void_data.user_end_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.h.void_data.cur_markers_idx(2))]);
+           
+obj.cur_stream = obj.cur_expt.getStream(['Analog Channel  0', sprintf('%d',obj.cur_stream_idx)]);
+obj.cur_stream_data = obj.cur_stream.getData();
+            
 start_datetime = obj.cur_stream_data.time.start_datetime;
-st = obj.user_start_marker_obj.times - start_datetime;
-et = obj.user_end_marker_obj.times - start_datetime;
+st = obj.h.void_data.user_start_marker_obj.times - start_datetime;
+et = obj.h.void_data.user_end_marker_obj.times - start_datetime;
 % t is now the fraction of a day since the start
 % multiply by 86400 seconds in a day to convert to seconds to match up with
 % the locations of the markers in the graph.

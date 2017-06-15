@@ -1,0 +1,10 @@
+6_15_progress
+
+Notes from meeting with Danielle:
+
+Minimum voided volume must be 2 to 3 times the magnitude of the noise. 
+you can tell what is not a void by the slope of the increase. Points which have a really steep slope, go up, and then drop back down slightly are a solid void and should not be counted. 
+We have to be careful when these occur really close to a regular void (w/in a second) because that can cause issues with calculation of voided volume (that calculationg involves taking the average of data within 1 second of the start)
+
+
+Continued restructuring code

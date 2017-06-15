@@ -1,4 +1,4 @@
-function processD1(obj)
+function processD1(obj) %OLD METHOD
 %   function processD1()
 %   analysis.void_finder.processD1();
 %   method of the void_finder which analyzes the first derivative to find
@@ -110,9 +110,10 @@ for i = 1:length(reset_POI)
         %   close_ends is a col vector
         %
         
-    end_resets_idx(end+1)= close_ends(1);
+    end_resets_idx(end+1)= close_ends(end);
 end
-
+obj.removed_reset_start_times = start_times(start_deletions_idx);
+obj.removed_reset_end_times = end_times(end_deletions_idx);
 
 obj.reset_start_times = start_times(start_resets_idx);
 obj.reset_end_times = end_times(end_resets_idx);

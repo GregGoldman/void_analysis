@@ -4,6 +4,9 @@ classdef void_finder <handle
     %   analysis.void_finder
     %
     %   obj = analysis.void_finder
+    %
+    %   This is really the running class. It does the calculations on
+    %   actually finding where the voids are
     
     %{
     %   methods:
@@ -73,6 +76,8 @@ classdef void_finder <handle
         evap_start_times
         evap_end_times
         
+        removed_reset_start_times
+        removed_reset_end_times
         reset_start_times
         reset_end_times
         
