@@ -100,16 +100,23 @@ for i = 1:length(reset_POI)
     right_edge = reset_POI(i) + RES_WINDOW;
     
     [close_starts, close_ends] = obj.void_data.getMarkersInTimeRange(left_edge, right_edge);
-    
-    starts_to_remove = close_starts(2:end);
-    ends_to_remove = close_ends(1:end-1);
-    start_to_save = close_starts(1);
-    ends_to_save = close_ends(end);
-    
-    start_deletions = union(start_deletions, starts_to_remove);
-    end_deletions = union(end_deletions, ends_to_remove);
-    good_starts = union(good_starts,start_to_save);
-    good_ends = union(good_ends, ends_to_save);
+    % at this point, it is possible that all of these points were already
+    % deleted by glitch detection (possibly incorrectly). Have to check
+    if length(close_starts) ~= 0
+        starts_to_remove = close_starts(2:end);
+        
+        start_to_save = close_starts(1);
+        start_deletions = union(start_deletions, starts_to_remove);
+        good_starts = union(good_starts,start_to_save);
+        
+    end
+    if length(close_ends) ~= 0
+        ends_to_remove = close_ends(1:end-1);
+        ends_to_save = close_ends(end);
+        end_deletions = union(end_deletions, ends_to_remove);
+        good_ends = union(good_ends, ends_to_save);
+        
+    end
 end
 obj.void_data.removed_reset_start_times = start_deletions;
 obj.void_data.removed_reset_end_times = end_deletions;

@@ -98,19 +98,24 @@ classdef data < handle
             obj.d1 = obj.filtered_cur_stream_data.dif2;
             obj.d2 = obj.d1.dif2;
         end
-        function plotData(obj,option)
+        function plotData(obj,option,varargin)
             %
             %   inputs:
             %   -----------------------
             %   - option: 'filtered' or 'raw'
             %       determines if the data plotted should come from the
             %       filtered dataset or from the raw dataset
+            %   - varargin: optional input of handle of figure to plot into
             %
             %   TODO:
             %   ----------
             %   - return figure handles
             %
-            figure
+            if nargin == 3 
+                axes(varargin{1})
+            else
+                figure
+            end
             switch lower(option)
                 case 'filtered'
                     plot(obj.filtered_cur_stream_data);

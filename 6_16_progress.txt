@@ -1,0 +1,9 @@
+6_16_progress
+
+Algorithm is pretty successful. There are usually a few points which get mixed up, but it hardly every misses any data points, usualy is only a little off or has too many. Often it is becuase the threshold for what is a void is not always clear depending on the trial. 
+
+Most points which are missed are near something which has already been marked as an odd area of data (i.e. a spike or other glitch). 
+
+improved the accuracy of start markers by iteratively analyzing slope. Also improved removal of solid voiding events vs liquid. Able to mark which ones are too close together for adjustment. 
+
+updated comparison code

@@ -63,6 +63,10 @@ classdef void_data < handle
         % fecal void, food pellet, etc (slope issues)
         solid_void_start_times
         solid_void_end_times
+        
+        % proximity issues
+        proximity_issue_starts
+        proximity_issue_ends
 
         % voided volume and voiding time
         u_vv
@@ -170,14 +174,14 @@ classdef void_data < handle
             end_markers = obj.u_end_times;
             
             % find the reset points in the user marked points
-            start_vals = obj.h.data.getDataFromTimePoints(start_markers);
-            end_vals = obj.h.data.getDataFromTimePoints(end_markers);
+            start_vals = obj.h.data.getDataFromTimePoints('raw',start_markers);
+            end_vals = obj.h.data.getDataFromTimePoints('raw',end_markers);
             temp = start_vals > end_vals;
-            obj.u_reset_start_times = start_times(temp);
-            obj.u_reset_end_times = end_times(temp);
+            obj.u_reset_start_times = start_markers(temp);
+            obj.u_reset_end_times = end_markers(temp);
 
-            obj.u_vv = obj.getVoidedVolume(start_markers, end_markers, obj.u_reset_start_times, obj.u_reset_stop_times);
-            obj.u_vt = obj.getVoidingTime(start_markers, end_markers);
+            obj.u_vv = obj.getVoidedVolume(start_markers, end_markers, obj.u_reset_start_times, obj.u_reset_end_times);
+            obj.u_vt = obj.getVoidingTime(start_markers, end_markers)';
             obj.u_slopes = obj.getSlopes(obj.u_vv, obj.u_vt);
         end
         function processCptMarkedPts(obj)
@@ -309,6 +313,20 @@ classdef void_data < handle
             
             temp2 = (obj.updated_end_times >= start_time) & (obj.updated_end_times <= end_time);
             end_times = obj.updated_end_times(temp2);
+        end
+        function compareUserCpt(obj)
+            %
+            %   analysis.void_data.compareUserCpt
+            %
+            %   look for cpt-marked points which are within one second of
+            %   user-marked points
+            if length(obj.updated_start_times) ~= length(obj.updated_end_times)
+                error('uneven number of markers... how did you do that?')
+            end
+            if length(obj.reset_end_times) ~= length(obj.reset_end_times)
+                error('mismatched reset start and end times')
+            end
+            obj.comparison_result = analysis.comparison_result(obj)
         end
     end
     

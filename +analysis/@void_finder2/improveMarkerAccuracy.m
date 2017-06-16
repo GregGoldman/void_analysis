@@ -1,5 +1,8 @@
 function improveMarkerAccuracy(obj)
 %
+%   OUT OF DATE! Use improveAccuracyBySlopes
+%
+%
 %   analysis.void_finder.improveMarkerAccuracy();
 %
 %   Attempts to get closer to the actual start of the void
@@ -14,6 +17,7 @@ function improveMarkerAccuracy(obj)
 %   TODO: give this its own class!!!!!!
 %   TODO: make it more efficient!!!!!
 %   TODO: split up into functions!!!!
+error('out of date')
 
 start_times = obj.void_data.updated_start_times;
 end_times = obj.void_data.updated_end_times;

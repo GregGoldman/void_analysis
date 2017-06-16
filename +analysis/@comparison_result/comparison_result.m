@@ -10,72 +10,123 @@ classdef comparison_result < handle
         p
         %  parent void_finder class
         
-        cpt_success_idx
-        %  indices in obj.updated_start_times (or end_times) which have
-        %  both start and end matched with the user-found values
+        correct_starts
+        matched_u_starts
+        incorrect_starts
+        missed_starts
         
-        u_success_idx
-        %  the corresponding indices in the user markers to those points
-        %  in cpt_success_idx
-        
-        cpt_wrong_in_user_marks_idx
-        %  indices in the user-marked points which the computer did
-        %  not find within an appropriate tolerance
-        
-        cpt_wrong_in_cpt_marks_idx
-        %  indices in the computer-marked points which have no
-        %  corresponding correct user markers
-        
+        correct_ends
+        matched_u_ends
+        incorrect_ends
+        missed_ends
+
     end
     
     methods
-        function obj = comparison_result(p,cpt_success_idx,u_success_idx,cpt_wrong_in_user_marks_idx,cpt_wrong_in_cpt_marks_idx)
+        function obj = comparison_result(p)
             obj.p = p;
-            obj.cpt_success_idx = cpt_success_idx;
-            obj.u_success_idx = u_success_idx;
-            obj.cpt_wrong_in_user_marks_idx = cpt_wrong_in_user_marks_idx;
-            obj.cpt_wrong_in_cpt_marks_idx = cpt_wrong_in_cpt_marks_idx;
+            obj.runComparison();
         end
-        function plotCorrect(obj)
-            %   TODO: return plot handle!!
+        function runComparison(obj)
+            %
+            %   obj.runComparison()
+            %
+            %   keeps track of where we are within 1 second of the
+            %   user-found markers
             
-            hold off
-            plot(obj.p.cur_stream_data)
+            start_times = obj.p.updated_start_times;
+            end_times = obj.p.updated_end_times;
             
-            % plots the markers indicated by the user on the orignal data
+            u_start_times = obj.p.u_start_times;
+            u_end_times = obj.p.u_end_times;
+            tolerance = 1;
+            [a,b] = ismembertol(start_times,u_start_times,tolerance,'DataScale',1);
+            % a is logical mask of where data in start_times is within
+            % tolerance of data in u_start_times
+            obj.correct_starts = start_times(a);
+            obj.matched_u_starts = u_start_times(b(b~=0));
             
-            data = obj.p.cur_stream_data.d;
+            obj.incorrect_starts = start_times(~a);
+            temp = 1:length(u_start_times);
+            temp2 = setdiff(temp,b(b~=0));
+            obj.missed_starts = u_start_times(temp2)
             
-            cpt_start_times = obj.p.updated_start_times(obj.cpt_success_idx);
-            cpt_end_times = obj.p.updated_end_times(obj.cpt_success_idx);
+
+            [c,d] = ismembertol(end_times, u_end_times, tolerance, 'DataScale',1);
+            obj.correct_ends = end_times(c);
+            obj.matched_u_ends = u_end_times(d(d~=0));
             
-            cpt_start_data_idx = obj.p.cur_stream_data.time.getNearestIndices(cpt_start_times);
-            cpt_end_data_idx = obj.p.cur_stream_data.time.getNearestIndices(cpt_end_times);
+            obj.incorrect_ends = end_times(~c);
+            temp = 1:length(u_end_times);
+            temp2 = setdiff(temp,b(b~=0));
+            obj.missed_ends = u_end_times(temp2);
+        end
+        function walkThroughDetections(obj, source)
+            %
+            %   walkThroughDetections(source)
+            %
+            %   Skips along through all of the data showing areas that
+            %   cause problems.
+            %
+            %   Inputs:
+            %   ---------
+            %   - source: 'missed_starts', 'incorrect_starts', 'missed_ends',
+            %             'incorrect_ends'
+            %
             
-            cpt_start_y = data(cpt_start_data_idx);
-            cpt_end_y = data(cpt_end_data_idx);
+       switch source
+           case 'missed_starts'
+              POI = obj.missed_starts;
+           case 'incorrect_starts'
+              POI = obj.incorrect_starts;
+           case 'missed_ends'
+               POI = obj.missed_ends;
+           case 'incorrect_ends'
+                POI = obj.incorrect_ends;
+           otherwise
+               error('unrecognized input')
+       end
+                       
+        obj.p.h.data.plotData('raw');
+        obj.p.plotMarkers('raw','cpt');
+        obj.p.plotMarkers('raw','user');
+        %{
+        every time that enter is pressed, the next incorrectly marked
+        region is zoomed to in the figure. The times are output to the
+        command window
+        %}
+        for k = 1:length(POI)
+         axis([POI(k)-20,POI(k)+20,-inf,inf])
+         val = obj.p.h.data.getDataFromTimePoints('raw',POI(k));
+         plot(POI(k),val,'rh','MarkerSize',12)
+         pause 
+        end
+        end
+        function viewIncorrects(obj)
+            %
+            %   The result of this is confusing to look at /not helpful
+            %
             
-            %--------------------------------
-            u_start_times = obj.p.u_start_times(obj.u_success_idx);
-            u_end_times = obj.p.u_end_times(obj.u_success_idx);
+            figure
+            data_class = obj.p.h.data;
+            data_class.plotData('raw');
             
-            u_start_data_idx = obj.p.cur_stream_data.time.getNearestIndices(u_start_times);
-            u_end_data_idx = obj.p.cur_stream_data.time.getNearestIndices(u_end_times);
+            start_times = obj.incorrect_starts;
+            start_vals = data_class.getDataFromTimePoints('raw',start_times);
+            end_times = obj.incorrect_ends;
+            end_vals = data_class.getDataFromTimePoints('raw', end_times);
             
-            u_start_y = data(u_start_data_idx);
-            u_end_y = data(u_end_data_idx);
-            
-            %-------------------------------
+            u_start_times = obj.missed_starts;
+            u_end_times = obj.missed_ends;
+            u_start_vals = data_class.getDataFromTimePoints('raw',u_start_times);
+            u_end_vals = data_class.getDataFromTimePoints('raw',u_end_times);          
             
             hold on
-            plot(cpt_start_times,cpt_start_y,'k*', 'MarkerSize', 10);
-            plot(cpt_end_times,cpt_end_y, 'k+',  'MarkerSize', 10);
-            
-            plot(u_start_times,u_start_y, 'ko', 'MarkerSize', 10);
-            plot(u_end_times,u_end_y, 'ks', 'MarkerSize', 10);
-        end
-        function plotIncorrect(obj)
-            
+            plot(start_times,start_vals,'k*','MarkerSize',10);
+            plot(end_times,end_vals,'k+','MarkerSize',10);
+            plot(u_start_times,u_start_vals,'ko','MarkerSize',10);
+            plot(u_end_times,u_end_vals,'ks','MarkerSize',10);
+
         end
     end
     
