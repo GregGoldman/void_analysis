@@ -112,17 +112,24 @@ classdef data < handle
             %   - return figure handles
             %
             if nargin == 3 
-                axes(varargin{1})
+                switch lower(option)
+                    case 'filtered'
+                        plot(obj.filtered_cur_stream_data,'axes',varargin{1});
+                    case 'raw'
+                        plot(obj.cur_stream_data,'axes',varargin{1});
+                    otherwise
+                        error('unrecognized option (data format)')
+                end
             else
                 figure
-            end
-            switch lower(option)
-                case 'filtered'
-                    plot(obj.filtered_cur_stream_data);
-                case 'raw'
-                    plot(obj.cur_stream_data);
-                otherwise
-                    error('unrecognized option (data format)')
+                switch lower(option)
+                    case 'filtered'
+                        plot(obj.filtered_cur_stream_data);
+                    case 'raw'
+                        plot(obj.cur_stream_data);
+                    otherwise
+                        error('unrecognized option (data format)')
+                end
             end
         end
         function d = getCurStreamData(obj)
