@@ -19,8 +19,8 @@ classdef void_finder2 <handle
     example:
        
         obj = analysis.void_finder2;
-        obj.data.loadExpt(2);
-        obj.data.getStream(2,1);
+        obj.data.loadExptOld(2);
+        obj.data.getStreamOld(2,1);
         obj.findPossibleVoids();
           % this will bring up an option to remove bad data somewhere in
           % the middle. Right now, it is important that this step is taken

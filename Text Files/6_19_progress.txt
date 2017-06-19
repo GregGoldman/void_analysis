@@ -1,0 +1,4 @@
+6_19_progress
+
+made some headway on the GUI over the weekend. Main focus was figuring out how to allow adjustable data points (for moving void markers)
+plan for today is to get a lot more of that up and running.

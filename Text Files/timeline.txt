@@ -6,19 +6,19 @@ Week 1: 6/5 - 6/9 [x]
 [x]	Worked on processing of files, structure of code...
 
 Week 2: 5/12 - 5/16
-[]	Improve algorithm, start comparing to 'ground truth' data
+[x]	Improve algorithm, start comparing to 'ground truth' data
 		Top priority--the algorithm still needs substantial work (seems from comparing with other trials...)
 			consider a convolution????
 
-[]	fix the comparison code (bug from yesterday)
+[x]	fix the comparison code (bug from yesterday)
 []	create plots of vv and vt
-[]	add examples/points of interest in the code
-[]	Talk to Danielle about various points in the data/past trials
-[]	find ways to correct the resets/evaporations and the glitches in the data
+[x]	add examples/points of interest in the code
+[x]	Talk to Danielle about various points in the data/past trials
+[x]	find ways to correct the resets/evaporations and the glitches in the data
 []	merge voids which are very close toghether
 []	(by end of Friday) mostly successful algorithm
-[]	really carefully go through the finding pairs function to make sure it works properly...
-[]	*something about the timing is just not quite right...
+[x]	really carefully go through the finding pairs function to make sure it works properly...
+[x]	*something about the timing is just not quite right...
 
 
 

@@ -33,11 +33,14 @@ classdef data < handle
     methods
         function obj = data(h)
             obj.h = h;  % the void_finder class which holds it
-            
+            obj.findDefaultExptFiles();
+           
+            %{
             obj.save_location = 'C:\Data\nss_matlab_objs';
-            obj.findExptFiles();
+            obj.findDefaultExptFiles();
+            %}
         end
-        function findExptFiles(obj)
+        function findDefaultExptFiles(obj)
             %
             %   obj.findExptFiles()
             %
@@ -59,9 +62,43 @@ classdef data < handle
             end
             obj.expt_file_list_result = sl.dir.getList(RAW_DATA_ROOT,'recursive',-1,'extension',FILE_EXTENSION);
         end
-        function loadExpt(obj,index)
+        function findExptFiles(obj, file_path)
             %
-            %   obj.loadExpt(index)
+            %   obj.findExptFiles(file_path)
+            %
+            %   given the file path of a folder, search that folder and
+            %   subfolders for .nss files
+            %   Inputs:
+            %   ----------
+            %   - file_path: string of file path to search
+            
+            obj.save_location = file_path;
+            FILE_EXTENSION = '.nss';
+            if ~exist(file_path,'dir')
+                %type options = dba.getOptions for more details
+                %TODO: We should make it easier to edit from here ...
+                %   - might be best to tie into the options code
+                %   - dba.options.errors.missingFile() <- possible name
+                error_msg = sl.error.getMissingFileErrorMsg(file_path);
+                error(error_msg)
+            end
+            obj.expt_file_list_result = sl.dir.getList(file_path,'recursive',-1,'extension',FILE_EXTENSION);      
+        end
+        function loadExpt(obj, file_path)
+            %
+            %   obj.loadExpt(file_path)
+            %
+            %   Loads experiment objects
+            %   populates the end+1 index in obj.loaded_expts
+            %
+            %   inputs:
+            %   ------------
+            %   - file_path: path of expt to load
+            obj.cur_expt = notocord.file(file_path);
+        end
+        function loadExptOld(obj,index)
+            %       OUT OF DATE
+            %   obj.loadExptOld(index)
             %
             %   Loads experiment objects
             %   populates the end+1 index in obj.loaded_expts
@@ -75,8 +112,26 @@ classdef data < handle
             obj.loaded_expts = cell(1,temp);
             obj.loaded_expts{index} = notocord.file(obj.expt_file_list_result.file_paths{index});
         end
-        function getStream(obj, expt_idx, stream_num)
+        function getStream(obj, stream_num)
+            %   obj.getStream(stream_num)
             %
+            %   Load, filter, and differentiate (twice) the stream
+            %   indicated by the input argument from the current experiment
+            %
+            %   inputs:
+            %   ------------
+            %   - stream_num: integer index of the stream number to
+            %                 load 
+            
+            obj.cur_stream_idx = stream_num;
+            
+            h__markersAndStream(obj,stream_num);
+            h__filter(obj);
+            obj.d1 = obj.filtered_cur_stream_data.dif2;
+            obj.d2 = obj.d1.dif2; 
+        end
+        function getStreamOld(obj, expt_idx, stream_num)
+            %       OUT OF DATE
             %   obj.getStream(expt_idx, stream_num)
             %
             %   Load, filter, and differentiate (twice) the stream

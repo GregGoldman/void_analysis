@@ -254,6 +254,38 @@ classdef void_data < handle
                 end  
             end
         end
+        function vv = getVV(obj, start_markers, end_markers)
+            %
+            %   obj.getVV(start_times, end_times)
+            %
+            %   does the same thing as getVoidedVolume, but does not
+            %   require the input of reset times for calculations.
+             if (length(start_markers) ~= length(end_markers))
+                 error('input vectors are different sizes')
+             end
+             
+             TIME_WINDOW = 1; % window for average data
+             RESET_MAGNITUDE = 10;
+             vv = zeros(1,length(start_markers));
+             for k = 1:length(start_markers)
+                 s_left_edge = start_markers(k) - TIME_WINDOW;
+                 s_right_edge = start_markers(k);
+                 start_data = obj.h.data.getDataFromTimeRange('raw', [s_left_edge, s_right_edge]);
+                 start_avg = mean(start_data);
+                 
+                 e_left_edge = end_markers(k);
+                 e_right_edge = end_markers(k) + TIME_WINDOW;
+                 end_data = obj.h.data.getDataFromTimeRange('raw', [e_left_edge, e_right_edge]);
+                 end_avg = mean(end_data);
+                 
+                 if end_avg > start_avg
+                     % not a reset point
+                     vv(k) = end_avg - start_avg;
+                 else
+                     vv(k) =  RESET_MAGNITUDE - start_avg + end_avg;
+                 end
+             end
+        end
         function vt = getVoidingTime(~,start_markers,end_markers)
             %
             %   vt = obj.getVoidingTime(start_markers, end_markers)
