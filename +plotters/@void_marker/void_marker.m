@@ -18,12 +18,16 @@ classdef void_marker < handle
         marker_index
         marker_type
         marker_handle
+        comment
     end
     methods
         function obj = void_marker(marker_index, marker_type, marker_handle)
             obj.marker_index = marker_index;
             obj.marker_type = marker_type;
             obj.marker_handle = marker_handle;
+        end
+        function addComment(obj, comment)
+            obj.comment = comment;
         end
     end
 end

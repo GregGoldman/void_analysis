@@ -30,6 +30,7 @@ selected_idx = get(hObject, 'Value');
 analysis_GUI.selected_expt_idx = selected_idx;
 end
 function cb_okClicked(hObject, eventdata,analysis_GUI,h)
+close(h.fig);
 analysis_GUI.initExptAndStream();
-delete(h.fig);
+%delete(h.fig);
 end

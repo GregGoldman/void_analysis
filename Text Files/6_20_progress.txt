@@ -1,0 +1,10 @@
+6_20_progress
+
+Got a lot further with the GUI yesterday. Goal for today is to make improvements there with organization, finishing the callback functions, and saving defaults.
+
+TODO:
+save defaults
+fix startup stuff ("would you like to select bad data" needs to be dealt with differently)
+allow for different sorting types w/ selector (get into statistical similarity)
+deal with voids that are really close to other voids and write code to deal with that
+when you click a marker, make that the current marker
