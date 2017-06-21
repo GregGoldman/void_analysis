@@ -172,6 +172,11 @@ classdef void_data < handle
             %
             start_markers = obj.u_start_times;
             end_markers = obj.u_end_times;
+            if length(start_markers) ~= length(end_markers)
+               disp('there is a dimension mismatch');
+               disp('find the mismatch and remove it from the data');
+               keyboard
+            end
             
             % find the reset points in the user marked points
             start_vals = obj.h.data.getDataFromTimePoints('raw',start_markers);
@@ -358,7 +363,17 @@ classdef void_data < handle
             if length(obj.reset_end_times) ~= length(obj.reset_end_times)
                 error('mismatched reset start and end times')
             end
-            obj.comparison_result = analysis.comparison_result(obj)
+            obj.comparison_result = analysis.comparison_result(obj);
+        end
+        function plotDistributions(obj)
+            obj.processCptMarkedPts;
+            obj.processHumanMarkedPts;
+            figure
+            plot(obj.u_vt, obj.u_vv, 'ko','MarkerSize',8);
+            hold on
+            plot(obj.c_vt, obj.c_vv, 'ro','MarkerSize',8);
+            legend('user', 'cpt')
+            
         end
     end
     

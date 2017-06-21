@@ -58,7 +58,7 @@ classdef comparison_result < handle
             
             obj.incorrect_ends = end_times(~c);
             temp = 1:length(u_end_times);
-            temp2 = setdiff(temp,b(b~=0));
+            temp2 = setdiff(temp,d(d~=0));
             obj.missed_ends = u_end_times(temp2);
         end
         function walkThroughDetections(obj, source)
@@ -96,10 +96,17 @@ classdef comparison_result < handle
         command window
         %}
         for k = 1:length(POI)
-         axis([POI(k)-20,POI(k)+20,-inf,inf])
-         val = obj.p.h.data.getDataFromTimePoints('raw',POI(k));
-         plot(POI(k),val,'rh','MarkerSize',12)
-         pause 
+            left = POI(k) - 5;
+            right = POI(k) + 5;
+            
+            data_in_range = obj.p.h.data.getDataFromTimeRange('raw', [left right]);
+            maxy = max(data_in_range);
+            miny = min(data_in_range);
+            
+            axis([left,right,miny - 1,maxy + 1])
+            val = obj.p.h.data.getDataFromTimePoints('raw',POI(k));
+            plot(POI(k),val,'rh','MarkerSize',12)
+            pause
         end
         end
         function viewIncorrects(obj)

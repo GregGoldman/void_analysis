@@ -19,8 +19,8 @@ classdef void_finder2 <handle
     example:
        
         obj = analysis.void_finder2;
-        obj.data.loadExptOld(2);
-        obj.data.getStreamOld(2,1);
+        obj.data.loadExptOld(10);
+        obj.data.getStreamOld(10,1);
         obj.findPossibleVoids();
           % this will bring up an option to remove bad data somewhere in
           % the middle. Right now, it is important that this step is taken
@@ -33,6 +33,8 @@ classdef void_finder2 <handle
     
           % * are computer-found starts, + are computer-found stops
           % circles are user starts, squares are user stops
+    
+    see obj.void_data.comparison_result.walkThroughDetections
     %}
     properties
         data                        % analysis.data
@@ -64,7 +66,7 @@ classdef void_finder2 <handle
             %------------------------------------------------------------
             obj.processD1();
             %------------------------------------------------------------
-            obj.skipBadData();
+            %obj.skipBadData();
             %------------------------------------------------------------
             obj.findPairs();
             %----------------------------------------------------------
