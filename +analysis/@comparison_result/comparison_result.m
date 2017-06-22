@@ -19,6 +19,21 @@ classdef comparison_result < handle
         matched_u_ends
         incorrect_ends
         missed_ends
+        
+        
+        % --------------
+        % variables below apply when only both start and ends are correct        
+        final_start_times
+        final_end_times
+        % the times from the computer-found data which are matched both
+        % start and end
+        cpt_wrong_start
+        cpt_wrong_end
+        
+        user_missed_start
+        user_missed_end
+        
+        
 
     end
     
@@ -49,7 +64,7 @@ classdef comparison_result < handle
             obj.incorrect_starts = start_times(~a);
             temp = 1:length(u_start_times);
             temp2 = setdiff(temp,b(b~=0));
-            obj.missed_starts = u_start_times(temp2)
+            obj.missed_starts = u_start_times(temp2);
             
 
             [c,d] = ismembertol(end_times, u_end_times, tolerance, 'DataScale',1);
@@ -60,6 +75,23 @@ classdef comparison_result < handle
             temp = 1:length(u_end_times);
             temp2 = setdiff(temp,d(d~=0));
             obj.missed_ends = u_end_times(temp2);
+            
+            % now have to find where both start and end are correct
+            
+            both_correct_idx =  (a & c)';
+            obj.final_start_times = start_times(both_correct_idx);
+            obj.final_end_times = end_times(both_correct_idx);
+            
+            not_correct_idx = ~both_correct_idx;
+            obj.cpt_wrong_start = start_times(not_correct_idx);
+            obj.cpt_wrong_end = end_times(not_correct_idx);
+            
+            idx_array = 1:length(u_start_times); % same as length of u_end_times
+            t1 = setdiff(idx_array,b);
+            t2 = setdiff(idx_array,d);
+            
+            obj.user_missed_start = u_start_times(t1);
+            obj.user_missed_end = u_end_times(t2); 
         end
         function walkThroughDetections(obj, source)
             %

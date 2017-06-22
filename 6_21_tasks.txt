@@ -1,0 +1,9 @@
+axes labels should be raw seconds after the initial time point
+
+dont close whole gui on cancelling save
+
+fix y limit to certain range
+
+if you delete the last void, it freaks out
+
+create a nudge button

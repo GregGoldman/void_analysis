@@ -72,7 +72,7 @@ classdef void_finder2 <handle
             %----------------------------------------------------------
             obj.improveAccuracyBySlopes();
             %------------------------------------------------------------
-            obj.findVoidType(1, 0.75);
+            obj.findVoidType(1, 0.5);
         end
     end
     %----------------------------------------------------------------------
@@ -281,6 +281,35 @@ classdef void_finder2 <handle
             obj.void_data.processCptMarkedPts();
             
             % do processing on slope??
+        end
+        function findSolidVoids(obj)
+           % 
+           %    obj.findSolidVoids() 
+           % 
+           %    Looks at the residuals in the data to find voids which are
+           %    solid vs liquid. Solid voids with bad marker edge accuracy
+           %    will have larger residuals of a line fit between the data
+           %    points.
+           
+           %    Loop through the marker pairs and draw a line between start
+           %    and stop
+           
+           if length(obj.void_data.updated_start_times) ~= length(obj.void_data.updated_end_times)
+               error('mismatched dimensions');
+           end
+           for k = 1:length(obj.void_data.updated_start_times)
+               start_time = obj.void_data.updated_start_times(k);
+               end_time = obj.void_data.updated_end_times(k);
+               
+               [start_val end_val] = obj.data.getDataFromTimePoints('raw', [start_time, end_time]);
+               [start_idx, end_idx] = obj.data.cur_stream_data.time.getNearestIndices(start_time, end_time);
+                idx_range = start_idx:end_idx;
+                times_in_range = obj.data.cur_stream_data.time.getTimesFromIndices(idx_range);
+                
+               % rise = 
+                
+           end
+
         end
     end
 end
