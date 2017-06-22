@@ -51,3 +51,4 @@ hold on
 plot(c_vt,c_vv,'ro','MarkerSize',10);
 legend('user', 'cpt')
 
+

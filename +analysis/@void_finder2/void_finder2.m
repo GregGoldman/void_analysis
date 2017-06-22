@@ -20,7 +20,7 @@ classdef void_finder2 <handle
        
         obj = analysis.void_finder2;
         obj.data.loadExptOld(10);
-        obj.data.getStreamOld(10,1);
+        obj.data.getStreamOld(10,6);
         obj.findPossibleVoids();
           % this will bring up an option to remove bad data somewhere in
           % the middle. Right now, it is important that this step is taken
@@ -72,7 +72,7 @@ classdef void_finder2 <handle
             %----------------------------------------------------------
             obj.improveAccuracyBySlopes();
             %------------------------------------------------------------
-            obj.findVoidType(1, 0.5);
+            obj.findVoidType(0.5, 0.25);
         end
     end
     %----------------------------------------------------------------------
@@ -87,7 +87,7 @@ classdef void_finder2 <handle
             %   points occur at peak positives in acceleration, end points
             %   occur at peak negatives in acceleration.
             
-            ACCEL_THRESH = 3*10^-8;
+            ACCEL_THRESH = 2*10^-8;
             
             detections = obj.event_finder.findLocalMaxima(obj.data.d2,3,ACCEL_THRESH);
             obj.void_data.initial_start_times = detections.time_locs{1};
@@ -297,19 +297,45 @@ classdef void_finder2 <handle
            if length(obj.void_data.updated_start_times) ~= length(obj.void_data.updated_end_times)
                error('mismatched dimensions');
            end
+           obj.data.plotData('raw')
+           obj.void_data.plotMarkers('raw','cpt')
+           obj.void_data.plotMarkers('raw','user')
+           g = gca;
+           figure
+           f = gca;
+           
            for k = 1:length(obj.void_data.updated_start_times)
                start_time = obj.void_data.updated_start_times(k);
                end_time = obj.void_data.updated_end_times(k);
                
-               [start_val end_val] = obj.data.getDataFromTimePoints('raw', [start_time, end_time]);
-               [start_idx, end_idx] = obj.data.cur_stream_data.time.getNearestIndices(start_time, end_time);
-                idx_range = start_idx:end_idx;
-                times_in_range = obj.data.cur_stream_data.time.getTimesFromIndices(idx_range);
-                
-               % rise = 
-                
-           end
+               vals = obj.data.getDataFromTimePoints('raw', [start_time, end_time]);
+               idxs = obj.data.cur_stream_data.time.getNearestIndices([start_time, end_time]);
+               idx_range = idxs(1):idxs(2);
+               times_in_range = obj.data.cur_stream_data.time.getTimesFromIndices(idx_range);
+               data_in_range = obj.data.getDataFromTimeRange('raw',[start_time, end_time]);
 
+               
+                voided_vol = vals(2) - vals(1);
+                
+                y =  vals(2) - vals(1);
+                x =  end_time - start_time;
+                m = y/x;
+                
+                b = vals(1) - m*start_time;
+                y_hat = polyval([m,b],times_in_range);
+                
+                                
+                hold on
+                l =  plot(g,times_in_range,y_hat,'g-', 'linewidth', 2)
+                axis(g,[start_time - 5, end_time + 5, -inf, inf])
+                
+                % get the residuals
+                r = y_hat(:) - data_in_range(:);
+                normalized_r = r/voided_vol;
+                cla(f)
+                plot(f,normalized_r);
+                pause  
+           end
         end
     end
 end

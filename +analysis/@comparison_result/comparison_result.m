@@ -10,6 +10,8 @@ classdef comparison_result < handle
         p
         %  parent void_finder class
         
+        %-------------
+        % prob get rid of these. That comparison doesn't work well
         correct_starts
         matched_u_starts
         incorrect_starts
@@ -40,7 +42,64 @@ classdef comparison_result < handle
     methods
         function obj = comparison_result(p)
             obj.p = p;
-            obj.runComparison();
+            obj.compareOverlap();
+        end
+        function compareOverlap(obj)
+            %
+            %   obj.compareOverlap()
+            %
+            %   considers voids correct if there is a certain percent
+            %   overlap in the void time
+            %
+            OVERLAP_THRESH = 0.1;
+            
+            obj.p.processHumanMarkedPts; %for error checking purposes in number of start/end markers
+            
+            start_times = obj.p.updated_start_times;
+            end_times = obj.p.updated_end_times;
+            
+            u_start_times = obj.p.u_start_times;
+            u_end_times = obj.p.u_end_times;
+            
+            correct_cpt = [];
+            correct_user = [];
+            
+            for k = 1:length(start_times)
+                A = start_times(k);
+                B = end_times(k);
+                
+                for j = 1:length(u_start_times)
+                 C = u_start_times(j);
+                 D = u_end_times(j);
+                 
+                 if (B > C && A < D)
+                     % there is overlap
+                     overlap_length = min([B-A, D-A,D-C, B-C]);
+                     user_length = D-C;
+                     if overlap_length / user_length > OVERLAP_THRESH
+                       % we consider the void to be correct
+                       correct_cpt(end+1) = k;
+                       correct_user(end+1) = j;
+                     end
+                    break 
+                 end
+                end
+            end
+            
+            cpt_idx = 1:length(start_times);
+            u_idx = 1:length(u_start_times);
+            
+            incorrect_cpt = setdiff(cpt_idx,correct_cpt);
+            incorrect_u = setdiff(u_idx,correct_user);
+            
+            obj.final_start_times = start_times(correct_cpt);
+            obj.final_end_times = end_times(correct_cpt);
+            
+            obj.cpt_wrong_start = start_times(incorrect_cpt);
+            obj.cpt_wrong_end = end_times(incorrect_cpt);
+            
+            obj.user_missed_start = u_start_times(incorrect_u);
+            obj.user_missed_end = u_end_times(incorrect_u);           
         end
         function runComparison(obj)
             %
@@ -90,8 +149,40 @@ classdef comparison_result < handle
             t1 = setdiff(idx_array,b);
             t2 = setdiff(idx_array,d);
             
-            obj.user_missed_start = u_start_times(t1);
-            obj.user_missed_end = u_end_times(t2); 
+            t3 = union(t1,t2);
+            % t3 is the user markers which did not have BOTH matched
+            % starts/ends
+            
+            obj.user_missed_start = u_start_times(t3);
+            obj.user_missed_end = u_end_times(t3); 
+        end
+        function walk(obj,source)
+            obj.p.h.data.plotData('raw');
+            obj.p.plotMarkers('raw','cpt');
+            obj.p.plotMarkers('raw','user');
+            
+            switch lower(source)
+                case 'cpt'
+                    POI = obj.cpt_wrong_start;
+                case 'user'
+                    POI = obj.user_missed_start;
+                otherwise
+                    error('unrecognized')
+            end
+            
+            for k = 1:length(POI)
+                left = POI(k) - 5;
+                right = POI(k) + 10;
+                
+                data_in_range = obj.p.h.data.getDataFromTimeRange('raw', [left right]);
+                maxy = max(data_in_range);
+                miny = min(data_in_range);
+                
+                axis([left,right,miny - 1,maxy + 1])
+                val = obj.p.h.data.getDataFromTimePoints('raw',POI(k));
+                plot(POI(k),val,'rh','MarkerSize',12)
+                pause
+            end
         end
         function walkThroughDetections(obj, source)
             %
