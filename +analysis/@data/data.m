@@ -29,7 +29,6 @@ classdef data < handle
         d2
         
     end
-    
     methods
         function obj = data(h)
             obj.h = h;  % the void_finder class which holds it
@@ -101,7 +100,7 @@ classdef data < handle
             %   obj.loadExptOld(index)
             %
             %   Loads experiment objects
-            %   populates the end+1 index in obj.loaded_expts
+            %   populates the index in obj.loaded_expts
             %
             %   inputs:
             %   ------------
@@ -278,6 +277,9 @@ obj.filtered_cur_stream_data = obj.cur_stream_data.filter(filter);
 
 end
 function h__markersAndStream(obj, stream_num)
+%
+%   TODO: what if there are no markers or we don't want the markers?
+%
 
 obj.h.void_data.cur_markers_idx = [stream_num+1, stream_num + 9];
 % need to figure out if there are both start and end markers
@@ -292,7 +294,7 @@ end
 % and stop markers. If it is 17(?) then it has start and stop
 % markers  % it seems that only the very first experiment file that I have
 % has only one marker per void
-if (count(1) == 9) %this is definitely not a good way to do this...
+if (count(1) == 9) %this is definitely NOT a good way to do this...
     error('no end markers, NYI')
 end
 obj.h.void_data.user_start_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.h.void_data.cur_markers_idx(1))]);

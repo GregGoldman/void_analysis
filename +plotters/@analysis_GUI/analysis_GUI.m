@@ -43,11 +43,7 @@ classdef analysis_GUI < handle
                                                      maximum slope
                                                      ??
     
-    figure out how saving should work
-    
-    Automatically load the default location to look for expt files
-    
-    Speed up the processing of expts
+    BREAK THIS UP INTO SMALLER CLASSES!!!!!!!!!
     %}
     properties
         h
@@ -81,6 +77,9 @@ classdef analysis_GUI < handle
         % from void markers. If false, then times displayed are those which
         % don't have markers and were flagged as a certain type of error
         void_just_deleted
+        % if a void was just deleted, we want next/previous buttons to not
+        % skip what becomes the current void when there is an index shift
+        % from the deletion
         
         times_to_display
         time_index
@@ -91,10 +90,12 @@ classdef analysis_GUI < handle
     methods
         function obj = analysis_GUI()
             
+            % find the gui
             BASE_PATH = sl.stack.getMyBasePath;
             fig_name = 'analysis_GUI.fig';
             gui_path = fullfile(BASE_PATH, fig_name);
             
+            % initialize the figure
             obj.fig_handle = openfig(gui_path);
             obj.h = guihandles(obj.fig_handle);
             setappdata(obj.fig_handle,'obj',obj);
@@ -102,6 +103,7 @@ classdef analysis_GUI < handle
             
             obj.void_finder2 = analysis.void_finder2;
             
+            % instantiate the callbacks
             set(obj.h.browse_button, 'callback', {@obj.cb_browseClicked})
             obj.zoom_lines.left = [];
             obj.zoom_lines.right = [];
@@ -118,12 +120,13 @@ classdef analysis_GUI < handle
             set(obj.h.times_listbox, 'callback', {@obj.cb_newTimeSelected});
             set(obj.h.event_selection_listbox, 'callback', {@obj.cb_eventTypeChanged});
             
+            % annoying matlab default
             a = obj.h.top_axes;
             set(a,'buttondownfcn', {@obj.cb_addVoid});
             set(a,'NextPlot', 'replacechildren');
-            
             b = obj.h.bottom_axes;
             set(b,'NextPlot', 'replacechildren');
+            
             
             obj.initEventTypes;
             obj.void_just_deleted = false;
@@ -225,7 +228,6 @@ classdef analysis_GUI < handle
             %   lines as well as the marker type and index of the marker
             
             % delete the old markers
-            
             for k = 1:length(obj.start_markers)
                 cur_start = obj.start_markers{k};
                 delete(cur_start.marker_handle);
@@ -291,6 +293,7 @@ classdef analysis_GUI < handle
             
             obj.vv = obj.void_finder2.void_data.getVV(start_times,end_times);
             obj.vt = obj.void_finder2.void_data.getVoidingTime(start_times,end_times);
+            
             if obj.looking_at_voids_flag
             obj.refreshTimesList();
             end
@@ -300,7 +303,8 @@ classdef analysis_GUI < handle
             %   obj.syncViewLines(src, ev)
             %
             %   **This is used both as a callback function and is regularly
-            %   used by other functions!!!
+            %   used by other functions
+            %       (not good, need to update)
             %
             %   When the zoom is changed on the top plot, the lines on the
             %   bottom plot adjust to show where in the data you are
@@ -354,6 +358,8 @@ classdef analysis_GUI < handle
             %    Inputs:
             %    -------
             %    - index
+            
+            
             if index < 1
                 return
             elseif index > length(obj.start_markers)
@@ -419,7 +425,7 @@ classdef analysis_GUI < handle
             obj.syncViewLines();
         end
         function saveCurrentData(obj)
-            %
+            %   
             %   obj.saveCurrentData(obj)
             %
             %   Saves the start/end times, voided volume, and voiding time
@@ -482,7 +488,10 @@ classdef analysis_GUI < handle
             %   obj.updateComment(comment)
             %
             %   Stores the message to the 'comment' property of the start
-            %   marker. End markers do not carry comments
+            %   marker. End markers do not carry comments.
+            %
+            %   TODO: have comments be displayed in the box if they have
+            %   been previously saved.
             
             cur_marker = obj.start_markers{obj.cur_marker_idx};
             cur_marker.comment = comment;
@@ -507,9 +516,8 @@ classdef analysis_GUI < handle
             %
             %   obj.initEventTypes()
             %
-            %   Updates the list of event types to look at. Will later
-            %   allow for selection of time windows to look at where voids
-            %   may have been missed
+            %   Updates the list of event types to look at.(ex spike times,
+            %   evaporations, etc.)
             
             list = {'Voids Found';'Calibration' ; 'Spikes' ; 'Evaporations' ; 'Glitches'; 'Bad Resets' ; 'Unpaired'; 'Too Small'; 'Slope/Solids'; 'User-Deleted'};
             set(obj.h.event_selection_listbox, 'String', list);
@@ -977,4 +985,3 @@ classdef analysis_GUI < handle
         end
     end
 end
-

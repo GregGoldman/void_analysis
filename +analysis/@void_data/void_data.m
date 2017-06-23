@@ -30,6 +30,7 @@ classdef void_data < handle
         updated_start_times
         updated_end_times
         
+        % I don't think I use these two:
         final_start_times
         final_end_times
         
@@ -43,7 +44,7 @@ classdef void_data < handle
         evap_end_times
         
         % resets
-        removed_reset_start_times
+        removed_reset_start_times % times in the middle of a proper reset (usually a start and a stop in between the correct two)
         removed_reset_end_times
         reset_start_times
         reset_end_times
@@ -64,14 +65,16 @@ classdef void_data < handle
         solid_void_start_times
         solid_void_end_times
         
-        % proximity issues
+        % proximity issues -- too close to other voids to have marker
+        % accuracy adjusted/to ensure that voided volume is calculated
+        % correctly
         proximity_issue_starts
         proximity_issue_ends
 
         % voided volume and voiding time
-        u_vv
+        u_vv %user
         u_vt
-        c_vv
+        c_vv %computer
         c_vt
         
         u_slopes
@@ -81,7 +84,7 @@ classdef void_data < handle
     end
     methods
         function obj = void_data(h)
-            obj.h = h;
+            obj.h = h; % the parent void_finder2 class
         end
         function updateDetections(obj,start_times,end_times)
             %
@@ -209,6 +212,8 @@ classdef void_data < handle
         end
         function vv = getVoidedVolume(obj,start_markers, end_markers, reset_starts, reset_stops)
             %
+            %   better method is now obj.getVV !!!!!!
+            %
             %   vv = obj.getVoidedVolume(start_markers, end_markers)
             %   
             %   Given start and end marker times, use the average of the
@@ -265,6 +270,7 @@ classdef void_data < handle
             %
             %   does the same thing as getVoidedVolume, but does not
             %   require the input of reset times for calculations.
+            
              if (length(start_markers) ~= length(end_markers))
                  error('input vectors are different sizes')
              end
@@ -344,6 +350,10 @@ classdef void_data < handle
             %    - start_times: array of times from obj.updated_start_times
             %                    which are within the range specified
             %    - end times: same thing for obj.updated_end_times
+            %
+            %   Notes:
+            %   ----------------
+            %   This function is not very useful
             
             temp = (obj.updated_start_times >= start_time) & (obj.updated_start_times <=end_time);
             start_times = obj.updated_start_times(temp);
@@ -355,8 +365,7 @@ classdef void_data < handle
             %
             %   analysis.void_data.compareUserCpt
             %
-            %   look for cpt-marked points which are within one second of
-            %   user-marked points
+            %   creates the comparison class which runs the comparisons
             if length(obj.updated_start_times) ~= length(obj.updated_end_times)
                 error('uneven number of markers... how did you do that?')
             end
@@ -366,6 +375,9 @@ classdef void_data < handle
             obj.comparison_result = analysis.comparison_result(obj);
         end
         function plotDistributions(obj)
+            %
+            % NYI!!!!!!!! The comparison class/scripts take care of this
+            %
             obj.processCptMarkedPts;
             obj.processHumanMarkedPts;
             figure
@@ -373,7 +385,6 @@ classdef void_data < handle
             hold on
             plot(obj.c_vt, obj.c_vv, 'ro','MarkerSize',8);
             legend('user', 'cpt')
-            
         end
     end
     
