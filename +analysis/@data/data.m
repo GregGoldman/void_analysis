@@ -1,7 +1,7 @@
 classdef data < handle
     %
     %   Class:
-    %   analysis.data_helper
+    %   analysis.data_helper  JAH: Out of date
     %
     %   A class which is responsible for:
     %   Loading data
@@ -13,12 +13,27 @@ classdef data < handle
     %   -----------------------------------
     %   TODO
     
+    %JAH: Overall this class looks nice. I hope that it felt like this
+    %was actually simplifying things overall ...
+    
     properties
-        h                       % analysis.data_helper
+        h                       % analysis.data_helper  %JAH: class is not correct
+        %
+        %JAH: I'll typically label this 'parent', where as I reserve 'h'
+        %for inteface objects that a class is wrapping
+        %i.e. h is usually something like a Java or com object
         
         save_location
         expt_file_list_result
+        
+        
+        %JAH: I haven't looked at the specifics of this, but 
+        %this could cause serious memory issues since I read the entire
+        %file into memory ...
         loaded_expts            % cell of notocord.file
+        
+        
+        
         cur_expt
         
         cur_stream              % notocord.continuous_stream
@@ -154,6 +169,29 @@ classdef data < handle
         end
         function plotData(obj,option,varargin)
             %
+            %   JAH, document as:
+            %
+            %   plotData(obj,option,*axes)
+            %
+            %   Inputs
+            %   ------
+            %   option :
+            %       - 'filtered'
+            %       - 'raw'
+            %
+            %   Optional Inputs
+            %   ---------------
+            %   axes :
+            %       Axes handle to plot into
+            %
+            
+            
+            
+            %OLD DOCUMENTATION
+            %
+            %
+            %
+            %
             %   inputs:
             %   -----------------------
             %   - option: 'filtered' or 'raw'
@@ -164,7 +202,9 @@ classdef data < handle
             %   TODO:
             %   ----------
             %   - return figure handles
-            %
+            
+            
+            
             if nargin == 3 
                 switch lower(option)
                     case 'filtered'
@@ -280,6 +320,8 @@ function h__markersAndStream(obj, stream_num)
 %
 %   TODO: what if there are no markers or we don't want the markers?
 %
+%
+%   JAH: I'm working on making this interface simpler ...
 
 obj.h.void_data.cur_markers_idx = [stream_num+1, stream_num + 9];
 % need to figure out if there are both start and end markers
@@ -297,6 +339,10 @@ end
 if (count(1) == 9) %this is definitely NOT a good way to do this...
     error('no end markers, NYI')
 end
+
+%JAH: Typically it is better to hold this locally and then to have
+%the parent request these values. This might be done on demand (dependent
+%property or method) since as you indicate we might not want the markers
 obj.h.void_data.user_start_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.h.void_data.cur_markers_idx(1))]);
 obj.h.void_data.user_end_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.h.void_data.cur_markers_idx(2))]);
            

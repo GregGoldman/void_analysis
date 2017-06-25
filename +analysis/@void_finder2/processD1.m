@@ -4,7 +4,7 @@ function processD1(obj)
 %   method of the void_finder which analyzes the first derivative to find
 %   points of   1)glitches 2)resets 3)evaporations
 
-
+%JAH: Move to options
 SPEED_THRESH = 3*10^-3;
 big_jump_pts = obj.event_finder.findLocalMaxima(obj.data.d1,3,SPEED_THRESH);
 positives = big_jump_pts.time_locs{1};
@@ -28,6 +28,8 @@ h__findGlitches(obj,positives,negatives,pos_pres_in_neg, idx_of_loc_in_neg, bad_
 h__findEvaporations(obj,evap_POI);
 h__findResets(obj,reset_POI);
 end
+
+%JAH: Provide spaces between functions ...
 function h__findGlitches(obj,positives,negatives, pos_pres_in_neg, idx_of_loc_in_neg, bad_neg_idxs)
 %   glitch spikes have a characteristic up-then-down behavior in the slope.
 %   areas of very close maxs and mins in the slope are generally glitch
@@ -37,7 +39,37 @@ glitch_end_peaks = negatives(bad_neg_idxs);
 
 obj.void_data.glitch_start_times = [];
 obj.void_data.glitch_end_times = [];
-TIME_THRESH = 15;
+TIME_THRESH = 15; %JAH: expose in options. Normally if I don't use options
+%this should still be at the top of the function or even possibly
+%at the top of the file, which gets passed into helper functions as a
+%propertoy of an options structure
+
+
+%JAH: This seems like it could be a common function ...
+%-------------------------------------------------------
+% Given a set of time ranges, find all markers within those time ranges
+% and assign them to a particular field, removing them from the valid
+% markers
+%
+% Note, instead of a union, since I am assuming these arrays are relatively
+% small (less than 10000), just create work with a mask
+%
+% i.e. 
+% first time range => invalidates start indices 3:5
+% second time range => invalidtes start indices 4:6
+% third time range => invalidates start indices 10:12
+% update 'bad_start_indices_mask' in a loop
+%
+% bad_start_indices_mask = [F F T T T T F F F T T T F F F F F etc]
+%
+% glitch_start_times = current_start_times(bad_start_indices_mask)
+% current_start_times(bad_start_indices_mask) = [];
+%
+% function invalidateRanges(start_range_times,stop_range_times,invalid_type)
+%
+% invalidateRanges(glitch_start_peaks-TIME_THRESH, ...
+%       glitch_end_peaks+TIME_THRESH, 'glitch')  
+
 for i = 1:length(glitch_start_peaks)
     start_time = glitch_start_peaks(i) - TIME_THRESH;
     end_time = glitch_end_peaks(i) + TIME_THRESH;
@@ -51,6 +83,8 @@ for i = 1:length(glitch_start_peaks)
     obj.void_data.glitch_end_times = union(temp2,bad_ends);
 end
 obj.void_data.updateDetections(obj.void_data.glitch_start_times, obj.void_data.glitch_end_times);
+
+
 end
 function h__findEvaporations(obj,evap_POI)
 %   for now, cut out 10 seconds on either side, although this has the

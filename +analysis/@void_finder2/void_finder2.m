@@ -63,16 +63,26 @@ classdef void_finder2 <handle
             %
             %   Runs all of the methods to process the data
             
+            %JAH: I've started adjusted the spacing, otherwise it is hard
+            %to read this code. I've also updated the wording.
+            
             obj.event_finder = obj.data.d2.calculators.eventz;
-            %-------------------------------------------------------------
-            %   for the acceleration to find all the possible start and stop
-            %   points (comes in obj.initial_detections)
+            
+            
+            %Acceleration Processing
+            %-----------------------
+            % - Find all the possible start and stop points 
+            % - populates obj.initial_detections (JAH: out of date)
             obj.processD2();
+            
+            % Handling balance calibration
             %------------------------------------------------------------
+            % - Input is 90 seconds, representing calibration period, so 
+            %   no voids are allowed to occur within this time period
+            % - populates void_data. ...            
             obj.IDCalibration(90);
-            % input is 90 seconds, calibration period
-            % updates obj.calibration_marks
-            % also calls updateDetections (see obj.updated_detections)
+
+            
             %------------------------------------------------------------
             obj.findSpikes();
             % Looks for regions in the data where magnitude increases and
@@ -99,6 +109,11 @@ classdef void_finder2 <handle
             % the residuals relative to a line drawn between the start and
             % end markers
             %------------------------------------------------------------
+            
+            %JAH: should do:
+            MIN_VOID_TIME = 0.5; %seconds
+            NOISE_MULTIPLIER = 0.25; 
+            
             obj.findVoidType(0.5, 0.25);
             % obj.findType(min_void_time, noise_multiplier);
             % see comments in fcn
@@ -117,9 +132,26 @@ classdef void_finder2 <handle
             %   points occur at peak positives in acceleration, end points
             %   occur at peak negatives in acceleration.
             
+            %JAH: Move this to an options class
+            %let user pass options into the constructor, if not use
+            %defaults. Document all variables in the options class
             ACCEL_THRESH = 2*10^-8;
             
             detections = obj.event_finder.findLocalMaxima(obj.data.d2,3,ACCEL_THRESH);
+            
+            %JAH: Access void data then assign
+            
+            vd = obj.void_data;
+            
+            vd.initial_start_times = detections.time_locs{1};
+            vd.initial_end_times = detections.time_locs{2};
+            %etc.
+            
+            %JAH: Note that time_locs{1} is a poor name. I will be renaming
+            %it in the updated findLocalMaxima code.
+            
+            %JAH: This might be better in void data ...
+            
             obj.void_data.initial_start_times = detections.time_locs{1};
             obj.void_data.initial_end_times = detections.time_locs{2};
             
@@ -137,6 +169,7 @@ classdef void_finder2 <handle
             start_times = obj.void_data.initial_start_times;
             end_times = obj.void_data.initial_end_times;
             
+            %JAH: please use spaces with < and >
             obj.void_data.calibration_start_times = start_times(start_times<calibration_period);
             obj.void_data.calibration_end_times = end_times(end_times<calibration_period);
             
@@ -213,6 +246,17 @@ classdef void_finder2 <handle
             %   these points tend to occur in areas of tiny slope
             %   changes during a void, so they can reasonably be discounted
             
+            
+            %JAH: This function is getting a little long, although
+            %largely due to commenting. Something like this function
+            %can be a bit tricky to implement properly. This should
+            %probably be something that gets moved into the standard
+            %library. Then, you should also have test cases to verify
+            %that this function is working as expected. Moving it outside
+            %of the class makes it easier to test the function in
+            %isolation.
+            
+            
             %first, loop through the starting times
             start_times = obj.void_data.updated_start_times;
             end_times = obj.void_data.updated_end_times;
@@ -228,6 +272,17 @@ classdef void_finder2 <handle
             %               NEARESTPOINT2([1 4 3 12],[0 3],'next') % -> [2 NaN 2 NaN]
             
             % match pairs:
+            
+            %JAH: In general it is preferable to avoid buidling an array
+            %in a loop. It is fine now for quick debugging, but should
+            %not be in a standard library function. Note that you know the 
+            %max number of partners
+            %n_partners_max = min(length(start_times),length(end_times)
+            %
+            %then you just need to keep track of which index you are at
+            %and truncate at the end
+            
+            
             partners = [];
             for i = 1:length(ind)
                 if ~isnan(ind(i))
@@ -250,6 +305,11 @@ classdef void_finder2 <handle
                     to do this. Luckily this does not occur frequently
                     anymore anyway
                     %}
+                    
+                    %JAH: Matlab should remove this inefficiency but
+                    %it should be quicker to have:
+                    %t = find(ind == ind(i),1,'last')
+                    
                     t = find(ind == ind(i));
                     start_to_save = t(end);
                     stop_to_save = cur_val;
@@ -275,6 +335,19 @@ classdef void_finder2 <handle
             %
             %   classifies the voiding events by looking at voided volume,
             %   voiding time, proximity to other void events, etc...
+            %
+            %   JAH: please document as:
+            %
+            %   Inputs
+            %   ------
+            %   min_void_time : double
+            %       TODO: Document more specifically
+            %   noise_multiplier : double
+            %       Voids must have a voided volume at least this many
+            %       times the magnitude of the noise (min to max) to be
+            %       considered a valid void.
+            %
+            %   JAH: Old documentation
             %
             %   Inputs:
             %   -----------
