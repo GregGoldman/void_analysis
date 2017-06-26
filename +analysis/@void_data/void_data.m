@@ -13,7 +13,7 @@ classdef void_data < handle
     %
     
     properties
-        h                           % handle to the void_finder class
+        parent                           % handle to the void_finder class
                                     % analysis.void_finder
         %markers
         cur_markers_idx             % array [start end]
@@ -83,8 +83,8 @@ classdef void_data < handle
         comparison_result          % analysis.comparison_result
     end
     methods
-        function obj = void_data(h)
-            obj.h = h; % the parent void_finder2 class
+        function obj = void_data(parent)
+            obj.parent = parent; % the parent void_finder2 class
         end
         function updateDetections(obj,start_times,end_times)
             %
@@ -148,11 +148,11 @@ classdef void_data < handle
             end
             switch lower(data_type)
                 case 'filtered'
-                    start_vals = obj.h.data.getDataFromTimePoints('filtered', start_times);
-                    end_vals =  obj.h.data.getDataFromTimePoints('filtered', end_times);
+                    start_vals = obj.parent.data.getDataFromTimePoints('filtered', start_times);
+                    end_vals =  obj.parent.data.getDataFromTimePoints('filtered', end_times);
                 case 'raw'
-                   start_vals = obj.h.data.getDataFromTimePoints('raw', start_times);
-                   end_vals =  obj.h.data.getDataFromTimePoints('raw', end_times);
+                   start_vals = obj.parent.data.getDataFromTimePoints('raw', start_times);
+                   end_vals =  obj.parent.data.getDataFromTimePoints('raw', end_times);
                 otherwise
                     error('unrecognized data_type')
             end
@@ -182,8 +182,8 @@ classdef void_data < handle
             end
             
             % find the reset points in the user marked points
-            start_vals = obj.h.data.getDataFromTimePoints('raw',start_markers);
-            end_vals = obj.h.data.getDataFromTimePoints('raw',end_markers);
+            start_vals = obj.parent.data.getDataFromTimePoints('raw',start_markers);
+            end_vals = obj.parent.data.getDataFromTimePoints('raw',end_markers);
             temp = start_vals > end_vals;
             obj.u_reset_start_times = start_markers(temp);
             obj.u_reset_end_times = end_markers(temp);
@@ -248,12 +248,12 @@ classdef void_data < handle
             for k = 1:length(start_markers)
                 s_left_edge = start_markers(k) - TIME_WINDOW;
                 s_right_edge = start_markers(k);
-                start_data = obj.h.data.getDataFromTimeRange('raw', [s_left_edge, s_right_edge]);
+                start_data = obj.parent.data.getDataFromTimeRange('raw', [s_left_edge, s_right_edge]);
                 start_avg = mean(start_data);
                 
                 e_left_edge = end_markers(k);
                 e_right_edge = end_markers(k) + TIME_WINDOW;
-                end_data = obj.h.data.getDataFromTimeRange('raw', [e_left_edge, e_right_edge]);
+                end_data = obj.parent.data.getDataFromTimeRange('raw', [e_left_edge, e_right_edge]);
                 end_avg = mean(end_data);
                 
                 if ~any(k == reset_idxs)
@@ -281,12 +281,12 @@ classdef void_data < handle
              for k = 1:length(start_markers)
                  s_left_edge = start_markers(k) - TIME_WINDOW;
                  s_right_edge = start_markers(k);
-                 start_data = obj.h.data.getDataFromTimeRange('raw', [s_left_edge, s_right_edge]);
+                 start_data = obj.parent.data.getDataFromTimeRange('raw', [s_left_edge, s_right_edge]);
                  start_avg = mean(start_data);
                  
                  e_left_edge = end_markers(k);
                  e_right_edge = end_markers(k) + TIME_WINDOW;
-                 end_data = obj.h.data.getDataFromTimeRange('raw', [e_left_edge, e_right_edge]);
+                 end_data = obj.parent.data.getDataFromTimeRange('raw', [e_left_edge, e_right_edge]);
                  end_avg = mean(end_data);
                  
                  if end_avg > start_avg

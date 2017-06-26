@@ -1,7 +1,7 @@
 classdef data < handle
     %
     %   Class:
-    %   analysis.data_helper
+    %   analysis.data
     %
     %   A class which is responsible for:
     %   Loading data
@@ -14,7 +14,7 @@ classdef data < handle
     %   TODO
     
     properties
-        h                       % analysis.data_helper
+        parent                       %analysis.void_finder2
         
         save_location
         expt_file_list_result
@@ -28,16 +28,39 @@ classdef data < handle
         d1
         d2
         
+        rect_filtered_data
+        
     end
     methods
-        function obj = data(h)
-            obj.h = h;  % the void_finder class which holds it
+        function obj = data(parent)
+            obj.parent = parent;  % the void_finder class which holds it
             obj.findDefaultExptFiles();
            
             %{
             obj.save_location = 'C:\Data\nss_matlab_objs';
             obj.findDefaultExptFiles();
             %}
+        end
+        function loadExptByString(obj, expt_id)
+            %
+            %   obj.loadExptByString(obj,expt_id)
+            %
+            %   Inputs
+            %   -------
+            %   expt_id: string
+            %       the date of the experiment as a string (i.e. '161109')
+            %
+            %   TODO: incorporate optional inputs, dealing with multiple
+            %   files of same ID, etc...
+            %
+            %   examples: loadExptByString('161109')
+ 
+            list_result = obj.expt_file_list_result;            
+            file_names = list_result.file_names;
+            file_paths = list_result.file_paths;
+            
+            temp = strncmp(file_names, expt_id, length(expt_id));
+            obj.loadExpt(file_paths{temp});
         end
         function findDefaultExptFiles(obj)
             %
@@ -126,8 +149,8 @@ classdef data < handle
             
             h__markersAndStream(obj,stream_num);
             h__filter(obj);
-            obj.d1 = obj.filtered_cur_stream_data.dif2;
-            obj.d2 = obj.d1.dif2; 
+            obj.d1 = obj.filtered_cur_stream_data.dif2Loop;
+            obj.d2 = obj.d1.dif2Loop; 
         end
         function getStreamOld(obj, expt_idx, stream_num)
             %       OUT OF DATE
@@ -149,22 +172,25 @@ classdef data < handle
             
             h__markersAndStream(obj,stream_num);
             h__filter(obj);
-            obj.d1 = obj.filtered_cur_stream_data.dif2;
-            obj.d2 = obj.d1.dif2;
+            
+            obj.d1 = obj.filtered_cur_stream_data.dif2Loop;
+            obj.d2 = obj.d1.dif2Loop;
         end
         function plotData(obj,option,varargin)
             %
-            %   inputs:
-            %   -----------------------
-            %   - option: 'filtered' or 'raw'
-            %       determines if the data plotted should come from the
-            %       filtered dataset or from the raw dataset
-            %   - varargin: optional input of handle of figure to plot into
+            %   plotData(obj,option, *axes)
             %
-            %   TODO:
-            %   ----------
-            %   - return figure handles
-            %
+            %   Inputs:
+            %   -------
+            %   option:
+            %       - 'filtered'
+            %       - 'raw'
+            %   Optional Inputs:
+            %   axes: 
+            %       Axes handle to plot into 
+            
+            
+            
             if nargin == 3 
                 switch lower(option)
                     case 'filtered'
@@ -220,18 +246,27 @@ classdef data < handle
         end
         function [vals, varargout] = getDataFromTimeRange(obj,source,time_range)
             %
-            %   obj.getDataFromTimeRange(time_range)
+            %   obj.getDataFromTimeRange(source, time_range)
             %
             %   Given an array of points in time, attempts to find the
             %   closest indices in the data and returns those values and
             %   all in between
             %
-            %   inputs:
-            %   ----------
+            %   Inputs
+            %   -------
             %   - source: 'filtered' or 'raw'
             %   - time_range: double array of time points which specify the
             %      edges of a range
             %
+            %   Outputs
+            %   -------
+            %   vals: the values from the time range and source
+            %   varargout: returns the time array as well
+            %
+            %   Examples:
+            %   [vals, times] = obj.getDataFromTimeRange('raw', time_range)
+ 
+            
             switch lower(source)
                 case 'filtered'
                     d = obj.filtered_cur_stream_data.d;
@@ -263,25 +298,23 @@ classdef data < handle
             % return the time array as well
             varargout{1} = obj.cur_stream_data.time.getTimesFromIndices(idx_range);
             end
-            
         end
     end
 end
 function h__filter(obj)
+ORDER = obj.parent.options.order;
+FREQUENCY = obj.parent.options.frequency;
+TYPE = obj.parent.options.type;
 
-ORDER = 2;
-FREQUENCY = 0.2;
-TYPE = 'low';
 filter = sci.time_series.filter.butter(ORDER,FREQUENCY,TYPE);
 obj.filtered_cur_stream_data = obj.cur_stream_data.filter(filter);
-
 end
 function h__markersAndStream(obj, stream_num)
 %
 %   TODO: what if there are no markers or we don't want the markers?
 %
 
-obj.h.void_data.cur_markers_idx = [stream_num+1, stream_num + 9];
+obj.parent.void_data.cur_markers_idx = [stream_num+1, stream_num + 9];
 % need to figure out if there are both start and end markers
 
 chan_info = table2cell(obj.cur_expt.chan_info);
@@ -297,19 +330,19 @@ end
 if (count(1) == 9) %this is definitely NOT a good way to do this...
     error('no end markers, NYI')
 end
-obj.h.void_data.user_start_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.h.void_data.cur_markers_idx(1))]);
-obj.h.void_data.user_end_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.h.void_data.cur_markers_idx(2))]);
+obj.parent.void_data.user_start_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.parent.void_data.cur_markers_idx(1))]);
+obj.parent.void_data.user_end_marker_obj = obj.cur_expt.getStream(['Event markers ', sprintf('%d',obj.parent.void_data.cur_markers_idx(2))]);
            
 obj.cur_stream = obj.cur_expt.getStream(['Analog Channel  0', sprintf('%d',obj.cur_stream_idx)]);
 obj.cur_stream_data = obj.cur_stream.getData();
             
 start_datetime = obj.cur_stream_data.time.start_datetime;
-st = obj.h.void_data.user_start_marker_obj.times - start_datetime;
-et = obj.h.void_data.user_end_marker_obj.times - start_datetime;
+st = obj.parent.void_data.user_start_marker_obj.times - start_datetime;
+et = obj.parent.void_data.user_end_marker_obj.times - start_datetime;
 % t is now the fraction of a day since the start
 % multiply by 86400 seconds in a day to convert to seconds to match up with
 % the locations of the markers in the graph.
 
-obj.h.void_data.u_start_times = 86400 * st;
-obj.h.void_data.u_end_times =  86400 * et;
+obj.parent.void_data.u_start_times = 86400 * st;
+obj.parent.void_data.u_end_times =  86400 * et;
 end

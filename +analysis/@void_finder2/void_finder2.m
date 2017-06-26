@@ -46,13 +46,18 @@ classdef void_finder2 <handle
         data                        % analysis.data
         void_data                   % analysis.void_data
         event_finder                % event_calculator
+        options                     % analysis.analysis_options
+        
+        certainty_level_array
+        % array of indices for the markers which lists how sure we are
+        % ranking from 1-3, 3 being the most certain
         
     end
     methods %overall functionality
         function obj = void_finder2()
             %   a class dedicated to loading files, finding voids, and
             %   calculating voided volume and voiding time
-            
+            obj.options = analysis.analysis_options();
             obj.data =  analysis.data(obj);
             obj.void_data = analysis.void_data(obj);
         end
@@ -64,19 +69,35 @@ classdef void_finder2 <handle
             %   Runs all of the methods to process the data
             
             obj.event_finder = obj.data.d2.calculators.eventz;
-            %-------------------------------------------------------------
-            %   for the acceleration to find all the possible start and stop
-            %   points (comes in obj.initial_detections)
+            
+            
+            %Acceleration Processing
+            % ----------------------
+            % - Find all the possible start and stop points 
+            % - populates:
+            %       obj.initial_start_times, obj.initial_end_times
+            %       obj.updated_start_times, obj.updated_end_times
             obj.processD2();
-            %------------------------------------------------------------
-            obj.IDCalibration(90);
-            % input is 90 seconds, calibration period
-            % updates obj.calibration_marks
-            % also calls updateDetections (see obj.updated_detections)
+            
+            
+            
+            %Handling balance calibration
+            % ---------------------------------------------
+            obj.IDCalibration();
+            % input is 90 seconds, representing calibration period, so no
+            % voids are allowed to occur within this time period
+            % populates: 
+            %       void_data.calibration_start_times
+            %       obj.void_data.calibration_end_times
+            %       the updated list of detections
+            
+
             %------------------------------------------------------------
             obj.findSpikes();
             % Looks for regions in the data where magnitude increases and
             % then returns to normal. Still not perfect...
+            
+            
             %------------------------------------------------------------
             obj.processD1();
             % Finds resets, evaporations, and glitches near those points
@@ -84,27 +105,34 @@ classdef void_finder2 <handle
             % are characterized by large negative values, evaporations by
             % large positive values, and glitches by close together
             % positive then negative peaks
+            
+            
             %------------------------------------------------------------
             obj.findPairs();
             % Matches starts and stops which are closest together. Stores
             % markers without a partner
+            
+            
             %----------------------------------------------------------
             obj.improveAccuracyByStd();
             % Iterates through the marker pairs and looks for large changes
             % relative to the mean to find starts/stops (6/23/17)
+            
+            
             %------------------------------------------------------------
-            % obj.findSolidVoids();
-            %       --
-            % Not currently working. Walks through the data and looks at
-            % the residuals relative to a line drawn between the start and
-            % end markers
-            %------------------------------------------------------------
-            obj.findVoidType(0.5, 0.25);
+            MIN_VOID_TIME = obj.options.min_void_time;
+            NOISE_MULTIPLIER  = obj.options.noise_multiplier;
+            obj.findVoidType(MIN_VOID_TIME, NOISE_MULTIPLIER);
             % obj.findType(min_void_time, noise_multiplier);
             % see comments in fcn
+            
+            %----------------------------------------------------------
+            obj.evaluateUncertainty();
+            % Ranks the likelyhood of a proper marking by the residuals
+            % from a straight line drawn between start and end markers
+            % (residuals normalized to the magnitude of the voided volume)           
         end
     end
-    %----------------------------------------------------------------------
     methods % data processing methods and filtering
         % processD1             (has its own file)
         % findSpikes            (has its own file)
@@ -117,28 +145,32 @@ classdef void_finder2 <handle
             %   points occur at peak positives in acceleration, end points
             %   occur at peak negatives in acceleration.
             
-            ACCEL_THRESH = 2*10^-8;
+            ACCEL_THRESH = obj.options.accel_thresh;
             
             detections = obj.event_finder.findLocalMaxima(obj.data.d2,3,ACCEL_THRESH);
-            obj.void_data.initial_start_times = detections.time_locs{1};
-            obj.void_data.initial_end_times = detections.time_locs{2};
+            
+            vd = obj.void_data;
+            vd.initial_start_times = detections.time_locs{1};
+            vd.initial_end_times = detections.time_locs{2};
             
             obj.void_data.updated_start_times = obj.void_data.initial_start_times;
             obj.void_data.updated_end_times = obj.void_data.initial_end_times;
         end
-        function IDCalibration(obj, calibration_period)
+        function IDCalibration(obj)
             %
-            %   obj.IDCalibration(calibration_period)
+            %   obj.IDCalibration()
             %
             %   Removes the start and end points which have been detected
             %   during the timeframe defined by calibration_period
             %
             
+            CALIBRATION_PERIOD = obj.options.calibration_period;
+            
             start_times = obj.void_data.initial_start_times;
             end_times = obj.void_data.initial_end_times;
             
-            obj.void_data.calibration_start_times = start_times(start_times<calibration_period);
-            obj.void_data.calibration_end_times = end_times(end_times<calibration_period);
+            obj.void_data.calibration_start_times = start_times(start_times < CALIBRATION_PERIOD);
+            obj.void_data.calibration_end_times = end_times(end_times < CALIBRATION_PERIOD);
             
             % removes these times from the array
             obj.void_data.updateDetections(obj.void_data.calibration_start_times, obj.void_data.calibration_end_times);
@@ -228,36 +260,24 @@ classdef void_finder2 <handle
             %               NEARESTPOINT2([1 4 3 12],[0 3],'next') % -> [2 NaN 2 NaN]
             
             % match pairs:
-            partners = [];
+            n_partners_max = min(length(start_times), length(end_times));
+            partners = zeros(n_partners_max,2);
+            partner_count = 0;
             for i = 1:length(ind)
                 if ~isnan(ind(i))
+                    partner_count = partner_count + 1;
                     cur_val = ind(i);
                     
-                    %{
-                    % we want to keep the one which is farthest away (the
-                    % first one)
-                    t = find(ind == ind(i));
-                    start_to_save = t(1);
-                    stop_to_save = cur_val;
-                    % this assumes that starts always come first... and we
-                    % may have a start start stop
-                    % UPDATE: this issue only occurs when there is a solid
-                    % void and then a liquid void one after the other. In
-                    % that case we want the closer start. see below
-                    %
-                    %
-                    UPDATE 6/23: this, I believe, is not the correct way
-                    to do this. Luckily this does not occur frequently
-                    anymore anyway
-                    %}
-                    t = find(ind == ind(i));
-                    start_to_save = t(end);
-                    stop_to_save = cur_val;
+                    %currently, just keep the closest two voids
                     
-                    partners(end+1,1) = start_to_save;
-                    partners(end,2) = stop_to_save;
+                    t = find(ind == ind(i), 1, 'last');
+                    start_to_save = t;
+                    stop_to_save = cur_val;
+                    partners(partner_count, 1) = start_to_save;
+                    partners(partner_count, 2) = stop_to_save;
                 end
             end
+            partners(partners == 0) = [];
             
             a = 1:length(start_times);
             b = 1:length(end_times);
@@ -276,16 +296,15 @@ classdef void_finder2 <handle
             %   classifies the voiding events by looking at voided volume,
             %   voiding time, proximity to other void events, etc...
             %
-            %   Inputs:
-            %   -----------
-            %   - min_void_time: (double)
-            %   - noise_multiplier: (double) voids must have a voided
-            %                        volume at least this many times the
-            %                        magnitude of the noise (min to max)
-            %                        to be considered a valid void
-            %
-            %
-            %   UPDATE 6/23: this method doesn't find much right now
+            %   Inputs
+            %   ------
+            %   min_void_time : double
+            %   noise_multiplier : double
+            %       Voids must have a voided volume at least this many
+            %       times the magnitude of the noise (min to max) to be
+            %       considered a valid void
+            
+            
             
             obj.void_data.processCptMarkedPts;
             % find VV and VT
@@ -321,28 +340,69 @@ classdef void_finder2 <handle
             obj.void_data.too_small_end_times = obj.void_data.updated_end_times(too_small);
             
             obj.void_data.updateDetections(obj.void_data.too_small_start_times, obj.void_data.too_small_end_times);
+        end
+        function evaluateUncertainty(obj)
+            %
+            %   obj.evaluateUncertainty
+            %
+            %   Uses the residuals to determine the expected accuracy of
+            %   the markers which have been placed
             
-            % at this point, we have gotten rid of all of the super small
-            % voids, so we it is time to make our markers more accurate
-            % NYI !!
-            
-            obj.void_data.processCptMarkedPts();
-            % not sure why this is here
+            if length(obj.void_data.updated_start_times) ~= length(obj.void_data.updated_end_times)
+                error('mismatched dimensions');
+            end
+                       
+            for k = 1:length(obj.void_data.updated_start_times)
+                start_time = obj.void_data.updated_start_times(k);
+                end_time = obj.void_data.updated_end_times(k);
+
+                start_vals = obj.data.getDataFromTimeRange('raw', [start_time - 0.005, start_time + 0.005]);
+                end_vals = obj.data.getDataFromTimeRange('raw', [end_time - 0.005, end_time + 0.005]);
+                
+                start_val = mean(start_vals);
+                end_val = mean(end_vals);
+                
+                if start_time == end_time || end_time < start_time
+                    disp('markers overlap')
+                    continue
+                end
+                idxs = obj.data.cur_stream_data.time.getNearestIndices([start_time, end_time]);
+                idx_range = idxs(1):idxs(2);
+                times_in_range = obj.data.cur_stream_data.time.getTimesFromIndices(idx_range);
+                data_in_range = obj.data.getDataFromTimeRange('raw',[start_time, end_time]);
+                
+                y =  end_val - start_val;
+                x =  end_time - start_time;
+                m = y/x;
+                
+                b = start_val - m*start_time;
+                y_hat = polyval([m,b],times_in_range);
+                
+                % get the residuals
+                r = y_hat(:) - data_in_range(:);
+                normalized_r = r/y;
+                
+                sum_abs_res = sum(abs(normalized_r));
+                if (sum_abs_res > 300)
+                    obj.certainty_level_array(k) = 1;
+                elseif(sum_abs_res > 200)
+                    obj.certainty_level_array(k) = 2;
+                else
+                    obj.certainty_level_array(k) = 3;
+                end
+            end    
         end
         function findSolidVoids(obj)
             %
-            %
-            %    NOT UP TO DATE
-            %
             %    obj.findSolidVoids()
             %
+            %    FOR DEBUGGING ONLY!
             %    Looks at the residuals in the data to find voids which are
             %    solid vs liquid. Solid voids with bad marker edge accuracy
             %    will have larger residuals of a line fit between the data
             %    points.
-            
-            %    Loop through the marker pairs and draw a line between start
-            %    and stop
+            %
+            %   Plots the lines and displays the residuals for analysis. 
             
             if length(obj.void_data.updated_start_times) ~= length(obj.void_data.updated_end_times)
                 error('mismatched dimensions');
@@ -390,7 +450,7 @@ classdef void_finder2 <handle
                 
                 
                 hold on
-                l =  plot(g,times_in_range,y_hat,'g-', 'linewidth', 2);
+                plot(g,times_in_range,y_hat,'g-', 'linewidth', 2);
                 axis(g,[start_time - 1, end_time + 1, -inf, inf]);
                 
                 % get the residuals
@@ -413,7 +473,49 @@ classdef void_finder2 <handle
             obj.void_data.solid_void_start_times = solid_void_starts;
             obj.void_data.solid_void_end_times = solid_void_ends;
         end
+        function plot(obj, varargin)
+            %
+            %   reviewDataPlot(obj)
+            %
+            %   Plots based on the input arguments/defaults
+            %   Inputs
+            %   -------
+            %   data_source: 
+            %       -'raw' (default)
+            %       - 'filtered' shows the butterworth filter results
+            %       - 'rect' shows the rectangular filter results (NYI!)
+            %   plot_user: true(defualt) or false
+            %   plot_cpt: true(default) or false
+
+            % set defaults
+            in.data_source = 'raw';
+            in.plot_user = true;
+            in.plot_cpt = true;     
+            
+            % modify defaults
+            in = sl.in.processVarargin(in, varargin);
+            
+            % plotting
+            obj.data.plotData(in.data_source);
+            
+            hold on 
+            if in.plot_user
+                obj.void_data.plotMarkers(in.data_source, 'user');
+            end
+            if in.plot_cpt
+                obj.void_data.plotMarkers(in.data_source, 'cpt');
+            end
+        end
         function walkThroughData(obj)
+            %
+            %   obj.walkThroughData()
+            %
+            %   Plots the raw data, the rect filtered data, and the cpt
+            %   markers. Pauses at each region. Press 1, enter to go
+            %   forward; 0, enter, to go backward. 
+            %
+            %   TODO: this is both ugly and slow
+            
             
             start_times = obj.void_data.updated_start_times;
             end_times = obj.void_data.updated_end_times;
@@ -425,7 +527,7 @@ classdef void_finder2 <handle
             
             base_skip_time = 5;
             time_window = 1;
-            time_increment = 0.05;
+            
             filter = sci.time_series.filter.smoothing(0.1,'type','rect');
             temp = obj.data.cur_stream_data.subset.fromStartAndStopTimes(start_times - base_skip_time - time_window  , end_times + base_skip_time + time_window , 'un', 0);
             temp2 = temp{1};

@@ -9,8 +9,8 @@ function findSpikes(obj)
 %   same as after the spike.
 
 
-TIME_WINDOW = 10; %seconds
-Y_TOL = 0.1;
+TIME_WINDOW = obj.options.spike_time_window; %seconds
+Y_TOL = obj.options.spike_magnitude_tolerance;
 
 start_times = obj.void_data.updated_start_times;
 [spike_starts, spike_ends] = h__spikes(obj, start_times, TIME_WINDOW, Y_TOL);

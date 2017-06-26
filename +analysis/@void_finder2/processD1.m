@@ -5,12 +5,12 @@ function processD1(obj)
 %   points of   1)glitches 2)resets 3)evaporations
 
 
-SPEED_THRESH = 3*10^-3;
+SPEED_THRESH = obj.options.speed_thresh;
 big_jump_pts = obj.event_finder.findLocalMaxima(obj.data.d1,3,SPEED_THRESH);
 positives = big_jump_pts.time_locs{1};
 negatives = big_jump_pts.time_locs{2};
 
-TOO_CLOSE = 10;
+TOO_CLOSE = obj.options.d1_spike_window;
 %seconds. only care abt a sharp up or down, not one after the other.
 %spikes which are closer together than TOO_CLOSE are considered glitches
 
@@ -37,7 +37,7 @@ glitch_end_peaks = negatives(bad_neg_idxs);
 
 obj.void_data.glitch_start_times = [];
 obj.void_data.glitch_end_times = [];
-TIME_THRESH = 15;
+TIME_THRESH = obj.options.glitch_time_window;
 for i = 1:length(glitch_start_peaks)
     start_time = glitch_start_peaks(i) - TIME_THRESH;
     end_time = glitch_end_peaks(i) + TIME_THRESH;
@@ -49,8 +49,11 @@ for i = 1:length(glitch_start_peaks)
     
     temp2 = obj.void_data.glitch_end_times;
     obj.void_data.glitch_end_times = union(temp2,bad_ends);
+    
 end
+
 obj.void_data.updateDetections(obj.void_data.glitch_start_times, obj.void_data.glitch_end_times);
+
 end
 function h__findEvaporations(obj,evap_POI)
 %   for now, cut out 10 seconds on either side, although this has the
@@ -59,7 +62,7 @@ function h__findEvaporations(obj,evap_POI)
 
 start_times = obj.void_data.updated_start_times;
 end_times = obj.void_data.updated_end_times;
-EVAP_WINDOW = 10; 
+EVAP_WINDOW = obj.options.evap_time_window;
 
 start_deletions = [];
 end_deletions = [];
@@ -86,7 +89,7 @@ function h__findResets(obj,reset_POI)
 
 start_times = obj.void_data.updated_start_times;
 end_times = obj.void_data.updated_end_times;
-RES_WINDOW = 10;
+RES_WINDOW = obj.options.reset_time_window;
 
 start_deletions = [];
 end_deletions = [];

@@ -37,6 +37,10 @@ classdef analysis_GUI < handle
     event_selection_listbox
     times_listbox
     
+    certainty_listbox
+    filter_menu
+    
+    
     TODO:
     --------
     add a place to update info about the processing: minimum volume
@@ -86,6 +90,9 @@ classdef analysis_GUI < handle
         
         deleted_starts
         deleted_ends
+        
+        certainty_level
+        
     end
     methods
         function obj = analysis_GUI()
@@ -105,8 +112,8 @@ classdef analysis_GUI < handle
             
             % instantiate the callbacks
             set(obj.h.browse_button, 'callback', {@obj.cb_browseClicked})
-            obj.zoom_lines.left = [];
-            obj.zoom_lines.right = [];
+            obj.zoom_lines.a = [];
+            obj.zoom_lines.b = [];
             set(obj.h.top_axes,'ButtonDownFcn',{@obj.syncViewLines});
             set(obj.h.next_button, 'callback',{@obj.cb_nextPressed});
             set(obj.h.prev_button, 'callback',{@obj.cb_prevPressed});
@@ -119,6 +126,8 @@ classdef analysis_GUI < handle
             set(obj.h.comment_text, 'callback', {@obj.cb_commentMade});
             set(obj.h.times_listbox, 'callback', {@obj.cb_newTimeSelected});
             set(obj.h.event_selection_listbox, 'callback', {@obj.cb_eventTypeChanged});
+            set(obj.h.certainty_listbox, 'callback', {@obj.cb_certaintySortChanged});
+            set(obj.h.filter_menu, 'callback', {@obj.cb_filterChanged});
             
             % annoying matlab default
             a = obj.h.top_axes;
@@ -311,8 +320,8 @@ classdef analysis_GUI < handle
             %   looking closely
             
             a = obj.h.top_axes;
-            xleft = a.XLim(1);
-            xright = a.XLim(2);
+            xa = a.XLim(1);
+            xb = a.XLim(2);
             
             b = obj.h.bottom_axes;
             axes(b);
@@ -321,18 +330,18 @@ classdef analysis_GUI < handle
             
             %   if after some sort of reset we lose the lines, need to
             %   bring them back
-            if isempty(obj.zoom_lines.left) || ~obj.zoom_lines.left.isvalid
+            if isempty(obj.zoom_lines.a) || ~obj.zoom_lines.a.isvalid
                 axes(b)
                 axis auto
                 ylow = b.YLim(1);
                 yhigh = b.YLim(2);
-                obj.zoom_lines.left = plot([xleft, xleft], [ylow, yhigh], 'r-', 'markersize', 50, 'hittest', 'on', 'buttondownfcn', {@obj.cb_clickLine});
-                obj.zoom_lines.right = plot([xright, xright], [ylow, yhigh],'r-', 'markersize', 50,'hittest', 'on', 'buttondownfcn', {@obj.cb_clickLine});
+                obj.zoom_lines.a = plot([xa, xa], [ylow, yhigh], 'r-', 'LineWidth', 2, 'hittest', 'on', 'buttondownfcn', {@obj.cb_clickLine});
+                obj.zoom_lines.b = plot([xb, xb], [ylow, yhigh],'r-', 'LineWidth', 2,'hittest', 'on', 'buttondownfcn', {@obj.cb_clickLine});
                 axes(a)
             end
             
-            set(obj.zoom_lines.left, 'xdata',[xleft, xleft]);
-            set(obj.zoom_lines.right, 'xdata', [xright, xright]);
+            set(obj.zoom_lines.a, 'xdata',[xa, xa]);
+            set(obj.zoom_lines.b, 'xdata', [xb, xb]);
         end
         function scrollRight(obj)
             %
@@ -512,16 +521,6 @@ classdef analysis_GUI < handle
             times_list = obj.h.times_listbox;
             set(times_list, 'string', data);
         end
-        function initEventTypes(obj)
-            %
-            %   obj.initEventTypes()
-            %
-            %   Updates the list of event types to look at.(ex spike times,
-            %   evaporations, etc.)
-            
-            list = {'Voids Found';'Calibration' ; 'Spikes' ; 'Evaporations' ; 'Glitches'; 'Bad Resets' ; 'Unpaired'; 'Too Small'; 'Slope/Solids'; 'User-Deleted'};
-            set(obj.h.event_selection_listbox, 'String', list);
-        end
         function showEventType(obj, event_type)
             %
             %    obj.showEventType(event_type)
@@ -632,6 +631,52 @@ classdef analysis_GUI < handle
                 obj.resetView();
             end
         end
+        function filterChanged(obj, selection)
+            %
+            %   obj.filterChanged(selection)
+            %
+            %   Changes the level of filtering that data goes through
+            %   before plotting
+            %
+           disp('NYI')
+           keyboard
+            switch selection
+                case 1
+                    % plot the raw data
+                case 2
+                    % filter lightly and plot
+                     filter = sci.time_series.filter.smoothing(0.01,'type','rect');
+                     temp = obj.void_finder2.data.cur_stream_data.filter(filter);
+                case 3
+                    % plot the strongly filtered data from void_finder2
+                    
+            end
+           
+       
+        end
+        function certaintySelected(obj, selection)
+            %
+            % obj.certaintySelected(selection)
+            %
+            disp('NYI')
+            keyboard;
+            
+            switch lower(selection)
+                case 'all'
+                    
+                case 'low'
+                    
+                case 'medium'
+                    
+                case 'high'
+                    
+                otherwise
+                    error('unknown selection. How did you do that?')
+            end
+            obj.certainty_level = selection; 
+            
+            
+        end
     end
     methods % callback functions
         function cb_nextPressed(obj, ~,~)
@@ -736,6 +781,30 @@ classdef analysis_GUI < handle
                 obj.jumpToTime(1);
             end
         end
+        function cb_certaintySortChanged(obj,src,ev)
+           selection = src.String{src.Value};
+           obj.certaintySelected(selection)
+        end
+        function cb_filterChanged(obj,src,ev)
+            selection = src.String{src.Value};
+            obj.filterChanged(selection)
+        end
+    end
+    methods % initialization of GUI
+        function initCertaintyList(obj)
+            to_display = {'All', 'Low', 'Medium', 'High'}
+            set(obj.h.certainty_listbox, 'String', to_display)
+        end
+        function initEventTypes(obj)
+            %
+            %   obj.initEventTypes()
+            %
+            %   Updates the list of event types to look at.(ex spike times,
+            %   evaporations, etc.)
+            
+            list = {'Voids Found';'Calibration' ; 'Spikes' ; 'Evaporations' ; 'Glitches'; 'Bad Resets' ; 'Unpaired'; 'Too Small'; 'Slope/Solids'; 'User-Deleted'};
+            set(obj.h.event_selection_listbox, 'String', list);
+        end
     end
     methods % callbacks for click and drag
         function cb_addVoid(obj,~,ev)
@@ -783,19 +852,6 @@ classdef analysis_GUI < handle
                 return
             end
             
-            if src == obj.zoom_lines.left
-                if src.XData >= obj.zoom_lines.right.XData - 2
-                    src.XData = src.XData - 2;
-                    obj.cb_stopDraggingLine(fig,ev);
-                    return
-                end
-            else %it is the right line
-                if src.XData <= obj.zoom_lines.left.XData + 2
-                    src.XData = src.XData + 2;
-                    obj.cb_stopDraggingLine(fig,ev);
-                    return
-                end
-            end
             b = obj.h.bottom_axes;
             ylow = b.YLim(1);
             yhigh = b.YLim(2);
@@ -814,14 +870,22 @@ classdef analysis_GUI < handle
             axes(a);
             
             end_time = obj.void_finder2.data.cur_stream_data.time.end_time;
-            left = obj.zoom_lines.left.XData(1);
-            right =  obj.zoom_lines.right.XData(1);
-            if right <= end_time
-                data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw', [left, right]);
-                miny = min(data_in_range);
-                maxy = max(data_in_range);
-                axis([left,right, miny, maxy]);
+
+            a_loc = obj.zoom_lines.a.XData(1);
+            b_loc =  obj.zoom_lines.b.XData(1);
+            
+            sorted_locs = sort([a_loc, b_loc]);
+            minx = sorted_locs(1);
+            maxx = sorted_locs(2);
+            
+            if minx > 0 && maxx < end_time;
+                
             end
+            
+            data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw', sorted_locs);
+            miny = min(data_in_range);
+            maxy = max(data_in_range);
+            axis([minx, maxx, miny, maxy]);
         end
         function cb_clickmarker(obj,src,ev)
             %
