@@ -245,7 +245,7 @@ classdef void_data < handle
             reset_starts = obj.reset_start_times;
             reset_stops = obj.reset_end_times;
             
-            obj.c_vv = obj.getVoidedVolume(start_markers, end_markers, reset_starts, reset_stops);
+            obj.c_vv = obj.getVV(start_markers, end_markers);
             obj.c_vt = obj.getVoidingTime(start_markers, end_markers);
             obj.c_slopes = obj.getSlopes(obj.c_vv,obj.c_vt);
         end
