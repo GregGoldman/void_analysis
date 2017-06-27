@@ -70,6 +70,7 @@ classdef void_data < handle
         % correctly
         proximity_issue_starts
         proximity_issue_ends
+        
 
         % voided volume and voiding time
         u_vv %user

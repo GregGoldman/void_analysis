@@ -325,21 +325,42 @@ classdef void_finder2 <handle
             
             obj.void_data.invalidateRanges(bad_starts, bad_ends, 'too_small');
         end
-        function evaluateUncertainty(obj)
+        function varargout = evaluateUncertainty(obj, varargin)
             %
-            %   obj.evaluateUncertainty
+            %   obj.evaluateUncertainty(*start_times, *end_times)
             %
             %   Uses the residuals to determine the expected accuracy of
             %   the markers which have been placed
+            %
+            %   If no inputs are entered, will use the object's updated
+            %   list of start and end times. If using start and end times
+            %   as inputs, will use those. If optional input arguments are
+            %   used, user must include 1 output argument.
+            %
+            %   Examples:
+            %      obj.evaluateUncertainty();      %populates local parameters
+            %      certainty_array = obj.evaluateUncertainty(start_times, end_times)
             
-            if length(obj.void_data.updated_start_times) ~= length(obj.void_data.updated_end_times)
+            in.start_times = obj.void_data.updated_start_times;
+            in.end_times = obj.void_data.updated_end_times;
+            
+            populate_local = 1;
+            if nargin > 1
+                in = sl.in.processVarargin(in, varargin);
+                populate_local = 0;
+                if nargout ~= 1
+                    error('incorrect number of output arguments for number of input args')
+                end
+            end
+            
+            if length(in.start_times) ~= length(in.end_times)
                 error('mismatched dimensions');
             end
-                       
-            obj.certainty_level_array = zeros(1, length(obj.void_data.updated_start_times));
-            for k = 1:length(obj.void_data.updated_start_times)
-                start_time = obj.void_data.updated_start_times(k);
-                end_time = obj.void_data.updated_end_times(k);
+            
+            certainty_array = zeros(1, length(in.start_times));
+            for k = 1:length(in.start_times)
+                start_time = in.start_times(k);
+                end_time = in.end_times(k);
 
                 start_vals = obj.data.getDataFromTimeRange('raw', [start_time - 0.005, start_time + 0.005]);
                 end_vals = obj.data.getDataFromTimeRange('raw', [end_time - 0.005, end_time + 0.005]);
@@ -349,7 +370,8 @@ classdef void_finder2 <handle
                 
                 if start_time == end_time || end_time < start_time
                     disp('markers overlap')
-                    %TODO: thie void must be removed
+                    % thie void must be removed--its index will be zero.
+                    % See end of fcn for removal
                     continue
                 end
                 idxs = obj.data.cur_stream_data.time.getNearestIndices([start_time, end_time]);
@@ -364,22 +386,34 @@ classdef void_finder2 <handle
                 b = start_val - m*start_time;
                 y_hat = polyval([m,b],times_in_range);
                 
+                % TODO: improvement could be to fit a more specific shape
+                % than a line!
+                
                 % get the residuals
                 r = y_hat(:) - data_in_range(:);
                 normalized_r = r/y;
                 
                 sum_abs_res = sum(abs(normalized_r));
                 if (sum_abs_res > 300)
-                    obj.certainty_level_array(k) = 1;
+                    certainty_array(k) = 1;
                 elseif(sum_abs_res > 200)
-                    obj.certainty_level_array(k) = 2;
+                    certainty_array(k) = 2;
                 else
-                    obj.certainty_level_array(k) = 3;
+                    certainty_array(k) = 3;
                 end
-            end    
-            temp1 = obj.certainty_level_array == 0;
-           
-            obj.void_data.invalidateRanges(obj.void_data.updated_start_times(temp1),obj.void_data.updated_end_times(temp1), 'too_small'); 
+            end
+            temp1 = certainty_array == 0;
+            output = certainty_array(~temp1);
+            
+            if nargout == 1 && ~populate_local
+                varargout = cell(1,1);
+                varargout{1} = output;
+            elseif nargout == 0
+                obj.certainty_level_array = output;
+                obj.void_data.invalidateRanges(obj.void_data.updated_start_times(temp1),obj.void_data.updated_end_times(temp1), 'too_small');
+            else
+                error('num output args is wrong')
+            end
         end
         function findSolidVoids(obj)
             %

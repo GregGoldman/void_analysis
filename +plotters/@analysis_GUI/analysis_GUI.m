@@ -72,7 +72,8 @@ classdef analysis_GUI < handle
         vv
         vt
         
-        cur_marker_idx = 0;
+        cur_marker_idx_in_times_listbox = 0;
+        cur_marker_idx_in_marker_array = 0;
         
         zoom_lines
         
@@ -108,13 +109,10 @@ classdef analysis_GUI < handle
             setappdata(obj.fig_handle,'obj',obj);
             set(obj.fig_handle, 'toolbar', 'none');
             
-            obj.void_finder2 = analysis.void_finder2;
+            
             
             % instantiate the callbacks
             set(obj.h.browse_button, 'callback', {@obj.cb_browseClicked})
-            obj.zoom_lines.a = [];
-            obj.zoom_lines.b = [];
-            set(obj.h.top_axes,'ButtonDownFcn',{@obj.syncViewLines});
             set(obj.h.next_button, 'callback',{@obj.cb_nextPressed});
             set(obj.h.prev_button, 'callback',{@obj.cb_prevPressed});
             set(obj.h.next_stream_button, 'callback',{@obj.cb_nextStream});
@@ -129,26 +127,35 @@ classdef analysis_GUI < handle
             set(obj.h.certainty_listbox, 'callback', {@obj.cb_certaintySortChanged});
             set(obj.h.filter_menu, 'callback', {@obj.cb_filterChanged});
             
-            % annoying matlab default
             a = obj.h.top_axes;
             set(a,'buttondownfcn', {@obj.cb_addVoid});
+            
+            % annoying matlab default
             set(a,'NextPlot', 'replacechildren');
             b = obj.h.bottom_axes;
             set(b,'NextPlot', 'replacechildren');
             
-            
+            % show the lists we can at this point
             obj.initEventTypes;
+            obj.initCertaintyList;
+            
+            % set defaults
+            obj.void_finder2 = analysis.void_finder2;
+            obj.zoom_lines.a = [];
+            obj.zoom_lines.b = [];
+            obj.looking_at_voids_flag = true;
             obj.void_just_deleted = false;
             obj.deleted_starts = [];
             obj.deleted_ends = [];
-            % TODO: update this so that if accidentally closed, data still
-            % gets saved
-            %{
-            set(obj.fig_handle, 'closerequestfcn', {@obj.cb_closeRequested})
-            %}
-            
+            % file search related stuff
             RAW_DATA_ROOT = dba.getOption('raw_data_root');
             set(obj.h.file_path_edit_text, 'string', RAW_DATA_ROOT);
+            
+            %{
+            % TODO: update this so that if accidentally closed, data still
+            % gets saved
+            set(obj.fig_handle, 'closerequestfcn', {@obj.cb_closeRequested})
+            %}
         end
         function browseExpts(obj)
             %
@@ -166,6 +173,8 @@ classdef analysis_GUI < handle
             obj.expt_path_list = list_result.file_paths;
             
             plotters.expt_browser(obj);
+            % updates obj.selected_expt_idx
+            % calls obj.initExptAndStream once an experiment is selected
         end
         function initExptAndStream(obj)
             %
@@ -177,31 +186,6 @@ classdef analysis_GUI < handle
             obj.selected_expt_path = obj.expt_path_list{obj.selected_expt_idx};
             set(obj.h.expt_id_text, 'String', obj.selected_expt_path);
             obj.void_finder2.data.loadExpt(obj.selected_expt_path);
-            obj.h__streamUpdated();
-        end
-        function nextStream(obj)
-            %
-            %   obj.nextStream()
-            %
-            %   Increases the stream number by one and plots it
-            
-            index = obj.cur_stream_number + 1;
-            obj.jumpToStream(index);
-            obj.h__streamUpdated();
-        end
-        function jumpToStream(obj, index)
-            %
-            %   obj.jumpToStream(index)
-            %
-            %   Go to a specific stream
-            %   Inputs:
-            %   --------
-            %   - index: double -- which stream to go to
-            
-            if index > 9
-                error('outside of range of streams')
-            end
-            obj.cur_stream_number = index;
             obj.h__streamUpdated();
         end
         function processStream(obj)
@@ -218,7 +202,6 @@ classdef analysis_GUI < handle
                         return
                 end
             end
-            
             obj.void_finder2.findPossibleVoids();
             obj.plotMarkers();
             obj.looking_at_voids_flag = true;
@@ -269,257 +252,6 @@ classdef analysis_GUI < handle
             % when, easier to just do this after each plot:
             set(a,'buttondownfcn', {@obj.cb_addVoid});
             set(a,'NextPlot', 'replacechildren');
-        end
-        function processMarkerData(obj)
-            %
-            %   obj.processMarkers()
-            %
-            %   Extracts the start and end times from each of the pairs of
-            %   markers which have been plotted. This method is necessary
-            %   because the user can move markers around, and we need a way
-            %   to get the start and end times easily from the line
-            %   objects.
-            %
-            %   updates the following properties:
-            %   - start_marker_times
-            %   - end_marker_times
-            %   - vv
-            %   - vt
-            
-            start_times = zeros(1,length(obj.start_markers));
-            end_times = start_times;
-            
-            for k = 1:length(obj.start_markers)
-                cur_start = obj.start_markers{k};
-                start_times(k) = cur_start.marker_handle.XData;
-                
-                cur_end = obj.end_markers{k};
-                end_times(k) = cur_end.marker_handle.XData;
-            end
-            
-            obj.start_marker_times = start_times;
-            obj.end_marker_times = end_times;
-            
-            obj.vv = obj.void_finder2.void_data.getVV(start_times,end_times);
-            obj.vt = obj.void_finder2.void_data.getVoidingTime(start_times,end_times);
-            
-            if obj.looking_at_voids_flag
-            obj.refreshTimesList();
-            end
-        end
-        function syncViewLines(obj,~,~)
-            %
-            %   obj.syncViewLines(src, ev)
-            %
-            %   **This is used both as a callback function and is regularly
-            %   used by other functions
-            %       (not good, need to update)
-            %
-            %   When the zoom is changed on the top plot, the lines on the
-            %   bottom plot adjust to show where in the data you are
-            %   looking closely
-            
-            a = obj.h.top_axes;
-            xa = a.XLim(1);
-            xb = a.XLim(2);
-            
-            b = obj.h.bottom_axes;
-            axes(b);
-            
-            hold on;
-            
-            %   if after some sort of reset we lose the lines, need to
-            %   bring them back
-            if isempty(obj.zoom_lines.a) || ~obj.zoom_lines.a.isvalid
-                axes(b)
-                axis auto
-                ylow = b.YLim(1);
-                yhigh = b.YLim(2);
-                obj.zoom_lines.a = plot([xa, xa], [ylow, yhigh], 'r-', 'LineWidth', 2, 'hittest', 'on', 'buttondownfcn', {@obj.cb_clickLine});
-                obj.zoom_lines.b = plot([xb, xb], [ylow, yhigh],'r-', 'LineWidth', 2,'hittest', 'on', 'buttondownfcn', {@obj.cb_clickLine});
-                axes(a)
-            end
-            
-            set(obj.zoom_lines.a, 'xdata',[xa, xa]);
-            set(obj.zoom_lines.b, 'xdata', [xb, xb]);
-        end
-        function scrollRight(obj)
-            %
-            %   obj.scrollRight
-            %
-            %   Moves the viewing window one void to the right
-            
-            obj.h__scroll(1);
-        end
-        function scrollLeft(obj)
-            %
-            %   obj.scrollLeft
-            %
-            %   Moves the viewing window one void to the left
-            
-            obj.h__scroll(-1);
-        end
-        function jumpToMarker(obj, index)
-            %
-            %    obj.jumpToMarker(index)
-            %
-            %    Switches the view to that of the marker indicated by index
-            %    Inputs:
-            %    -------
-            %    - index
-            
-            
-            if index < 1
-                return
-            elseif index > length(obj.start_markers)
-                return
-            end
-            obj.cur_marker_idx = index;
-            a = obj.h.top_axes;
-            
-            cur_start = obj.start_markers{obj.cur_marker_idx};
-            cur_end = obj.end_markers{obj.cur_marker_idx};
-            
-            cur_start_time = cur_start.marker_handle.XData;
-            cur_end_time = cur_end.marker_handle.XData;
-            
-            data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw',[cur_start_time, cur_end_time]);
-            miny = min(data_in_range);
-            maxy = max(data_in_range);
-            
-            axes(a);
-            axis([cur_start_time - 5, cur_end_time + 5, miny - 1, maxy + 1])
-            obj.syncViewLines();
-            obj.updateMarkerDetails();
-        end
-        function updateMarkerDetails(obj)
-            %
-            %   obj.updateMarkerDetails()
-            %
-            %   updates the list of details including start time, end time,
-            %   voided volume, and voiding time
-            %
-            %   TODO: include level of certainty!
-            
-            % TODO: don't run this calculation if nothing has changed
-            %   --only takes about 0.02 seconds, so not a big deal though
-            % tic
-            obj.processMarkerData;
-            % toc
-            data = cell(4,1);
-            a = obj.start_markers{obj.cur_marker_idx}.marker_handle.XData;
-            b = obj.end_markers{obj.cur_marker_idx}.marker_handle.XData;
-            c = obj.vv(obj.cur_marker_idx);
-            d = obj.vt(obj.cur_marker_idx);
-            
-            data{1} = ['Start Time: ', num2str(a)];
-            data{2} = ['End Time: ', num2str(b)];
-            data{3} = ['Void Volume: ', num2str(c)];
-            data{4} = ['Void Time: ', num2str(d)];
-            
-            set(obj.h.details_listbox, 'String', data)
-        end
-        function resetView(obj)
-            %
-            %   obj.resetView()
-            %
-            %   Resets the viewing window to show the full dataset
-            %   Sometimes the axis command gets the view stuck in a small
-            %   area
-            
-            axes(obj.h.bottom_axes)
-            axis auto
-            axes(obj.h.top_axes);
-            axis auto;
-            obj.syncViewLines();
-        end
-        function saveCurrentData(obj)
-            %   
-            %   obj.saveCurrentData(obj)
-            %
-            %   Saves the start/end times, voided volume, and voiding time
-            %   found for the given stream to the directory which the user
-            %   specifies (TODO: save default!!)
-            
-            obj.processMarkerData();
-            
-            PACKAGE_ROOT = sl.stack.getPackageRoot;
-            
-            filepath = fullfile(PACKAGE_ROOT,'saved_data');
-            
-            prompt = {'Please type where you would like files to be saved'};
-            dlg_title = 'Input';
-            num_lines = 1;
-            defaultans = {filepath};
-            save_loc = inputdlg(prompt, dlg_title, num_lines, defaultans);
-            
-            if isempty(save_loc)
-                disp('user cancelled save')
-               return 
-            end
-            
-            current_loc = cd(save_loc{1});
-            
-            name = obj.expt_name_list{obj.selected_expt_idx};
-            file_path = obj.expt_path_list{obj.selected_expt_idx};
-            
-            start_times = obj.start_marker_times;
-            end_times = obj.end_marker_times;
-            vv = obj.vv;
-            vt = obj.vt;
-            
-            [~, name, ~] = fileparts(file_path);
-            file_name = sprintf('%s_%s',name,'reviewed');
-            save(file_name,'start_times', 'end_times', 'vv', 'vt');
-            disp('file saved to:');
-            disp(save_loc);
-            disp(file_name);
-            disp('\n');
-            cd(current_loc);
-        end
-        function clearPlots(obj)
-            %
-            %   obj.clearPlots()
-            %
-            %   Clears everything on both plots to start fresh. Mostly a
-            %   function for debugging purposes
-            
-            a = obj.h.top_axes;
-            b = obj.h.bottom_axes;
-            cla(a);
-            cla(b);
-            a = obj.h.top_axes;
-            set(a,'buttondownfcn', {@obj.cb_addVoid});
-            set(a,'NextPlot', 'replacechildren');
-        end
-        function updateComment(obj, comment)
-            %
-            %   obj.updateComment(comment)
-            %
-            %   Stores the message to the 'comment' property of the start
-            %   marker. End markers do not carry comments.
-            %
-            %   TODO: have comments be displayed in the box if they have
-            %   been previously saved.
-            
-            cur_marker = obj.start_markers{obj.cur_marker_idx};
-            cur_marker.comment = comment;
-        end
-        function refreshTimesList(obj)
-            %
-            %   obj.refreshTimesList()
-            %
-            %   updates the list of times to view (upper right of GUi)
-            
-            %{
-            data = obj.start_marker_times;
-            times_list = obj.h.times_listbox;
-            set(times_list, 'string', data);
-            %}
-            
-            data = obj.times_to_display;
-            times_list = obj.h.times_listbox;
-            set(times_list, 'string', data);
         end
         function showEventType(obj, event_type)
             %
@@ -598,6 +330,314 @@ classdef analysis_GUI < handle
             end
             obj.refreshTimesList();
         end
+        function refreshTimesList(obj)
+            %
+            %   obj.refreshTimesList()
+            %
+            %   updates the list of times to view (upper right of GUi)
+            
+            data = obj.times_to_display;
+            times_list = obj.h.times_listbox;
+            set(times_list, 'string', data);
+        end
+        function jumpToMarker(obj, index)
+            %
+            %    obj.jumpToMarker(index, is_index*)
+            %
+            %    Switches the view to that of the marker indicated by index
+            %    **the index references the number in the list of updated
+            %    times, not in the list of overall markers!
+            %
+            %    Inputs:
+            %    -------
+            %    index
+            
+            
+            if index < 1
+                return
+            elseif index > length(obj.start_marker_times)
+                return
+            end
+            obj.cur_marker_idx_in_times_listbox = index;
+            a = obj.h.top_axes;
+            
+            temp = obj.h.times_listbox.String(index, :);
+            % have to do this b/c the times which are displayed are rounded
+            % to the 100ths place
+            times = cellfun(@obj.h__findMarkerTime,obj.start_markers);
+            b == str2double(temp)
+            mask = ismembertol(times,b, 0.01, 'DataScale', 1);
+            obj.cur_marker_idx_in_marker_array = find(mask);
+            
+            cur_start = obj.start_markers{mask};
+            cur_end = obj.end_markers{mask};
+            
+            cur_start_time = cur_start.marker_handle.XData;
+            cur_end_time = cur_end.marker_handle.XData;
+            
+            data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw',[cur_start_time, cur_end_time]);
+            miny = min(data_in_range);
+            maxy = max(data_in_range);
+            
+            % try to get the start/end window to be 10 seconds long
+            mid_length = (cur_start_time + cur_end_time)/2;
+            right = mid_length + 5;
+            left = mid_length - 5;
+            while right < cur_end_time
+                right = right + 0.5;
+            end
+            while left > cur_start_time
+                left = left - 0.5;
+            end
+            
+            % try to get the vertical window to be 2 units tall
+            mid_height = (miny + maxy)/2;
+            top = mid_height + 1;
+            bottom = mid_height - 1;
+            if top < maxy
+                top = maxy;
+            end
+            if bottom < miny
+                bottom = miny;
+            end
+            
+            axes(a);
+            axis([left, right, bottom, top])
+            obj.syncViewLines();
+            obj.updateMarkerDetails();
+        end
+        function syncViewLines(obj,~,~)
+            %
+            %   obj.syncViewLines(src, ev)
+            %
+            %   **This is used both as a callback function and is regularly
+            %   used by other functions
+            %       (not good, need to update)
+            %
+            %   When the zoom is changed on the top plot, the lines on the
+            %   bottom plot adjust to show where in the data you are
+            %   looking closely
+            
+            a = obj.h.top_axes;
+            xa = a.XLim(1);
+            xb = a.XLim(2);
+            
+            b = obj.h.bottom_axes;
+            axes(b);
+            
+            hold on;
+            
+            %   if after some sort of reset we lose the lines, need to
+            %   bring them back
+            if isempty(obj.zoom_lines.a) || ~obj.zoom_lines.a.isvalid
+                axes(b)
+                axis auto
+                ylow = b.YLim(1);
+                yhigh = b.YLim(2);
+                obj.zoom_lines.a = plot([xa, xa], [ylow, yhigh], 'r-', 'LineWidth', 2, 'hittest', 'on', 'buttondownfcn', {@obj.cb_clickLine});
+                obj.zoom_lines.b = plot([xb, xb], [ylow, yhigh],'r-', 'LineWidth', 2,'hittest', 'on', 'buttondownfcn', {@obj.cb_clickLine});
+                axes(a)
+            end
+            
+            set(obj.zoom_lines.a, 'xdata',[xa, xa]);
+            set(obj.zoom_lines.b, 'xdata', [xb, xb]);
+        end
+        function updateMarkerDetails(obj)
+            %
+            %   obj.updateMarkerDetails()
+            %
+            %   updates the list of details including start time, end time,
+            %   voided volume, and voiding time
+            %
+            %   TODO: include level of certainty!
+            
+           
+            obj.processMarkerData;
+            % updates all vv, vt, certainty_level
+            % updates start_marker_times and end_marker_times based on the
+            % values in the marker arrays (of marker objects)
+           
+            data = cell(4,1);
+            a = obj.start_markers{obj.cur_marker_idx}.marker_handle.XData;
+            b = obj.end_markers{obj.cur_marker_idx}.marker_handle.XData;
+            c = obj.vv(obj.cur_marker_idx);
+            d = obj.vt(obj.cur_marker_idx);
+            
+            data{1} = ['Start Time: ', num2str(a)];
+            data{2} = ['End Time: ', num2str(b)];
+            data{3} = ['Void Volume: ', num2str(c)];
+            data{4} = ['Void Time: ', num2str(d)];
+            
+            set(obj.h.details_listbox, 'String', data)
+        end
+        function processMarkerData(obj)
+            %
+            %   obj.processMarkers()
+            %
+            %   Extracts the start and end times from each of the pairs of
+            %   markers which have been plotted. This method is necessary
+            %   because the user can move markers around, and we need a way
+            %   to get the start and end times easily from the line
+            %   objects.
+            %
+            %   updates the following properties:
+            %   - start_marker_times
+            %   - end_marker_times
+            %   - vv
+            %   - vt
+            %   - certainty_level
+            
+            start_times = zeros(1,length(obj.start_markers));
+            end_times = start_times;
+            
+            for k = 1:length(obj.start_markers)
+                cur_start = obj.start_markers{k};
+                start_times(k) = cur_start.marker_handle.XData;
+                
+                cur_end = obj.end_markers{k};
+                end_times(k) = cur_end.marker_handle.XData;
+            end
+            
+            obj.start_marker_times = start_times;
+            obj.end_marker_times = end_times;
+            
+            obj.vv = obj.void_finder2.void_data.getVV(start_times, end_times);
+            obj.vt = obj.void_finder2.void_data.getVoidingTime(start_times, end_times);
+            tic
+            obj.certainty_level = obj.void_finder2.evaluateUncertainty('start_times', start_times, 'end_times', end_times);
+            toc
+            
+            if obj.looking_at_voids_flag
+                obj.refreshTimesList();
+            end
+        end
+        function nextStream(obj)
+            %
+            %   obj.nextStream()
+            %
+            %   Increases the stream number by one and plots it
+            
+            index = obj.cur_stream_number + 1;
+            obj.jumpToStream(index);
+            obj.h__streamUpdated();
+        end
+        function jumpToStream(obj, index)
+            %
+            %   obj.jumpToStream(index)
+            %
+            %   Go to a specific stream
+            %   Inputs:
+            %   --------
+            %   - index: double -- which stream to go to
+            
+            if index > 9
+                error('outside of range of streams')
+            end
+            obj.cur_stream_number = index;
+            obj.h__streamUpdated();
+        end
+        function scrollRight(obj)
+            %
+            %   obj.scrollRight
+            %
+            %   Moves the viewing window one void to the right
+            
+            obj.h__scroll(1);
+        end
+        function scrollLeft(obj)
+            %
+            %   obj.scrollLeft
+            %
+            %   Moves the viewing window one void to the left
+            
+            obj.h__scroll(-1);
+        end
+        function resetView(obj)
+            %
+            %   obj.resetView()
+            %
+            %   Resets the viewing window to show the full dataset
+            %   Sometimes the axis command gets the view stuck in a small
+            %   area
+            
+            axes(obj.h.bottom_axes)
+            axis auto
+            axes(obj.h.top_axes);
+            axis auto;
+            obj.syncViewLines();
+        end
+        function saveCurrentData(obj)
+            %
+            %   obj.saveCurrentData(obj)
+            %
+            %   Saves the start/end times, voided volume, and voiding time
+            %   found for the given stream to the directory which the user
+            %   specifies (TODO: save default!!)
+            
+            obj.processMarkerData();
+            
+            PACKAGE_ROOT = sl.stack.getPackageRoot;
+            
+            filepath = fullfile(PACKAGE_ROOT,'saved_data');
+            
+            prompt = {'Please type where you would like files to be saved'};
+            dlg_title = 'Input';
+            num_lines = 1;
+            defaultans = {filepath};
+            save_loc = inputdlg(prompt, dlg_title, num_lines, defaultans);
+            
+            if isempty(save_loc)
+                disp('user cancelled save')
+                return
+            end
+            
+            current_loc = cd(save_loc{1});
+            
+            name = obj.expt_name_list{obj.selected_expt_idx};
+            file_path = obj.expt_path_list{obj.selected_expt_idx};
+            
+            start_times = obj.start_marker_times;
+            end_times = obj.end_marker_times;
+            vv = obj.vv;
+            vt = obj.vt;
+            
+            [~, name, ~] = fileparts(file_path);
+            file_name = sprintf('%s_%s',name,'reviewed');
+            save(file_name,'start_times', 'end_times', 'vv', 'vt');
+            disp('file saved to:');
+            disp(save_loc);
+            disp(file_name);
+            disp('\n');
+            cd(current_loc);
+        end
+        function clearPlots(obj)
+            %
+            %   obj.clearPlots()
+            %
+            %   Clears everything on both plots to start fresh. Mostly a
+            %   function for debugging purposes
+            
+            a = obj.h.top_axes;
+            b = obj.h.bottom_axes;
+            cla(a);
+            cla(b);
+            a = obj.h.top_axes;
+            set(a,'buttondownfcn', {@obj.cb_addVoid});
+            set(a,'NextPlot', 'replacechildren');
+        end
+        function updateComment(obj, comment)
+            %
+            %   obj.updateComment(comment)
+            %
+            %   Stores the message to the 'comment' property of the start
+            %   marker. End markers do not carry comments.
+            %
+            %   TODO: have comments be displayed in the box if they have
+            %   been previously saved.
+            
+            cur_marker = obj.start_markers{obj.cur_marker_idx};
+            cur_marker.comment = comment;
+        end
         function jumpToTime(obj, index)
             %
             %   obj.jumpToTime
@@ -638,21 +678,21 @@ classdef analysis_GUI < handle
             %   Changes the level of filtering that data goes through
             %   before plotting
             %
-           disp('NYI')
-           keyboard
+            disp('NYI')
+            keyboard
             switch selection
                 case 1
                     % plot the raw data
                 case 2
                     % filter lightly and plot
-                     filter = sci.time_series.filter.smoothing(0.01,'type','rect');
-                     temp = obj.void_finder2.data.cur_stream_data.filter(filter);
+                    filter = sci.time_series.filter.smoothing(0.01,'type','rect');
+                    temp = obj.void_finder2.data.cur_stream_data.filter(filter);
                 case 3
                     % plot the strongly filtered data from void_finder2
                     
             end
-           
-       
+            
+            
         end
         function certaintySelected(obj, selection)
             %
@@ -661,21 +701,23 @@ classdef analysis_GUI < handle
             disp('NYI')
             keyboard;
             
-            switch lower(selection)
-                case 'all'
-                    
-                case 'low'
-                    
-                case 'medium'
-                    
-                case 'high'
-                    
-                otherwise
-                    error('unknown selection. How did you do that?')
+            if obj.looking_at_voids_flag
+                certainty_array = obj.void_finder2.evaluateUncertainty(obj.start_marker_times, obj.end_marker_times);
+                switch lower(selection)
+                    case 'all'
+                        obj.times_to_display = obj.start_marker_times;
+                    case 'low'
+                        obj.times_to_display = obj.start_marker_times(certainty_array == 1);
+                        
+                    case 'medium'
+                        obj.times_to_display = obj.start_marker_times(certainty_array == 2);
+                    case 'high'
+                        obj.times_to_display = obj.start_marker_times(certainty_array == 3);
+                    otherwise
+                        error('unknown selection. How did you do that?')
+                end
+                obj.certainty_level = selection;
             end
-            obj.certainty_level = selection; 
-            
-            
         end
     end
     methods % callback functions
@@ -996,12 +1038,12 @@ classdef analysis_GUI < handle
             %                or negative
             
             if ~obj.void_just_deleted
-            index = obj.cur_marker_idx + increment;
+                index = obj.cur_marker_idx + increment;
             else
-            index = obj.cur_marker_idx;                
+                index = obj.cur_marker_idx;
             end
             obj.void_just_deleted = 0;
-
+            
             obj.jumpToMarker(index);
             set(obj.h.times_listbox,'Value',obj.cur_marker_idx);
             %   TODO: rollover
@@ -1011,7 +1053,7 @@ classdef analysis_GUI < handle
             %   obj.h__deleteMarker(src)
             %
             %   Given the handle to a marker, deletes it and it partner
-            %   Inputs: 
+            %   Inputs:
             %   --------
             %   - src: the handle of the marker got from the callback
             
@@ -1046,6 +1088,9 @@ classdef analysis_GUI < handle
                     return
                 end
             end
+        end
+        function output = h__findMarkerTime(obj,marker)
+            output = marker.marker_handle.XData;
         end
     end
 end
