@@ -55,7 +55,7 @@ classdef void_data < handle
         
         % void times removed because they don't have a partner
         unpaired_start_times
-        unpaired_stop_times
+        unpaired_end_times
         
         % magnitude issues
         too_small_start_times
@@ -85,6 +85,44 @@ classdef void_data < handle
     methods
         function obj = void_data(parent)
             obj.parent = parent; % the parent void_finder2 class
+        end
+        function invalidateRanges(obj,start_times, end_times, invalid_type,varargin)
+            %
+            %   obj.invalidateRanges(start_times, stop_times, invalid_type, *overwrite)
+            %
+            %   Removes the start_times and stop_times from the list of
+            %   updated times. Also places these times in the corresponding
+            %   properties to mark why the were removed.
+            %
+            %   Inputs
+            %   --------
+            %   start_times
+            %   stop_times
+            %   invalid_type: string
+            %       - 'glitches'
+            %       - 'calibration'
+            %       etc.
+            %   varargin
+            %       -'overwrite': true or false (default)
+               
+            
+            in.overwrite = false;
+            in = sl.in.processVarargin(in,varargin);
+            
+            
+            obj.updated_start_times = setdiff(obj.updated_start_times, start_times);
+            obj.updated_end_times = setdiff(obj.updated_end_times, end_times);
+            
+            
+            if ~in.overwrite
+            obj.([invalid_type '_start_times']) = start_times;
+            obj.([invalid_type '_end_times']) = end_times;
+            else
+            temp1 = obj.([invalid_type '_start_times']);
+            temp2 = obj.([invalid_type '_end_times']);
+            obj.([invalid_type '_start_times']) = union(temp1, start_times);
+            obj.([invalid_type '_end_times']) = union(temp2, end_times);
+            end
         end
         function updateDetections(obj,start_times,end_times)
             %
@@ -351,15 +389,22 @@ classdef void_data < handle
             %                    which are within the range specified
             %    - end times: same thing for obj.updated_end_times
             %
-            %   Notes:
-            %   ----------------
-            %   This function is not very useful
+            %   start_times and end_times vectors assuming they are the
+            %   same length. In that case, start and end times will be
+            %   paired together to create the ranges of time to search
             
-            temp = (obj.updated_start_times >= start_time) & (obj.updated_start_times <=end_time);
-            start_times = obj.updated_start_times(temp);
+            if length(start_time) ~= length(end_time)
+                disp('mismatched dimensions')
+                keyboard
+            end
             
-            temp2 = (obj.updated_end_times >= start_time) & (obj.updated_end_times <= end_time);
-            end_times = obj.updated_end_times(temp2);
+            temp = (obj.updated_start_times(:)' >= start_time(:)) & (obj.updated_start_times(:)' <=end_time(:));
+            [~,J] = find(temp);
+            start_times = obj.updated_start_times(unique(J));
+            
+            temp2 = (obj.updated_end_times(:)' >= start_time(:)) & (obj.updated_end_times(:)' <= end_time(:));
+            [~,K] = find(temp2);
+            end_times = obj.updated_end_times(unique(K));
         end
         function compareUserCpt(obj)
             %

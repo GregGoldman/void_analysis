@@ -122,7 +122,7 @@ classdef void_finder2 <handle
             %------------------------------------------------------------
             MIN_VOID_TIME = obj.options.min_void_time;
             NOISE_MULTIPLIER  = obj.options.noise_multiplier;
-            obj.findVoidType(MIN_VOID_TIME, NOISE_MULTIPLIER);
+            obj.removeShortAndSmall(MIN_VOID_TIME, NOISE_MULTIPLIER);
             % obj.findType(min_void_time, noise_multiplier);
             % see comments in fcn
             
@@ -153,8 +153,8 @@ classdef void_finder2 <handle
             vd.initial_start_times = detections.time_locs{1};
             vd.initial_end_times = detections.time_locs{2};
             
-            obj.void_data.updated_start_times = obj.void_data.initial_start_times;
-            obj.void_data.updated_end_times = obj.void_data.initial_end_times;
+            vd.updated_start_times = obj.void_data.initial_start_times;
+            vd.updated_end_times = obj.void_data.initial_end_times;
         end
         function IDCalibration(obj)
             %
@@ -166,14 +166,10 @@ classdef void_finder2 <handle
             
             CALIBRATION_PERIOD = obj.options.calibration_period;
             
-            start_times = obj.void_data.initial_start_times;
-            end_times = obj.void_data.initial_end_times;
-            
-            obj.void_data.calibration_start_times = start_times(start_times < CALIBRATION_PERIOD);
-            obj.void_data.calibration_end_times = end_times(end_times < CALIBRATION_PERIOD);
-            
+            [cal_starts, cal_ends] = obj.void_data.getMarkersInTimeRange(0,CALIBRATION_PERIOD);
+           
             % removes these times from the array
-            obj.void_data.updateDetections(obj.void_data.calibration_start_times, obj.void_data.calibration_end_times);
+            obj.void_data.invalidateRanges(cal_starts, cal_ends, 'calibration');
         end
         function skipBadData(obj)
             %
@@ -238,12 +234,7 @@ classdef void_finder2 <handle
             %   findPairs(obj)
             %
             %   findPairs attempts to match start and end markers by
-            %   matching a given start with the next closest stop. It also
-            %   deals with cases of missing points i.e.:
-            %             start start stop
-            %   should leave out the middle start point
-            %   these points tend to occur in areas of tiny slope
-            %   changes during a void, so they can reasonably be discounted
+            %   matching a given start with the next closest stop. 
             
             %first, loop through the starting times
             start_times = obj.void_data.updated_start_times;
@@ -276,22 +267,20 @@ classdef void_finder2 <handle
                     partners(partner_count, 1) = start_to_save;
                     partners(partner_count, 2) = stop_to_save;
                 end
-            end
-            partners(partners == 0) = [];
-            
+            end           
             a = 1:length(start_times);
             b = 1:length(end_times);
             delete_start_idxs = setdiff(a,partners(:,1));
             delete_stop_idxs = setdiff(b,partners(:,2));
             
-            obj.void_data.unpaired_start_times = start_times(delete_start_idxs);
-            obj.void_data.unpaired_stop_times = end_times(delete_stop_idxs);
+            bad_starts = start_times(delete_start_idxs);
+            bad_ends = end_times(delete_stop_idxs);
             
-            obj.void_data.updateDetections(obj.void_data.unpaired_start_times,obj.void_data.unpaired_stop_times);
+            obj.void_data.invalidateRanges(bad_starts, bad_ends, 'unpaired');
         end
-        function findVoidType(obj, min_void_time, noise_multiplier)
+        function removeShortAndSmall(obj, min_void_time, noise_multiplier)
             %
-            %   obj.findType(min_void_time, noise_multiplier);
+            %   obj.removeShortAndSmall(min_void_time, noise_multiplier);
             %
             %   classifies the voiding events by looking at voided volume,
             %   voiding time, proximity to other void events, etc...
@@ -304,17 +293,13 @@ classdef void_finder2 <handle
             %       times the magnitude of the noise (min to max) to be
             %       considered a valid void
             
-            
-            
             obj.void_data.processCptMarkedPts;
             % find VV and VT
             % remove those with small void times
             temp = obj.void_data.c_vt < min_void_time;
             bad_starts = obj.void_data.updated_start_times(temp);
             bad_ends = obj.void_data.updated_end_times(temp);
-            obj.void_data.solid_void_start_times = bad_starts;
-            obj.void_data.solid_void_end_times = bad_ends;
-            obj.void_data.updateDetections(bad_starts, bad_ends);
+            obj.void_data.invalidateRanges(bad_starts, bad_ends, 'solid_void', 'overwrite', true);
             
             obj.void_data.processCptMarkedPts;
             % re-process without those bad voids
@@ -332,14 +317,13 @@ classdef void_finder2 <handle
             bottom = min(data_range);
             noise_mag = abs(top - bottom);
             
-            
             min_volume = noise_multiplier * noise_mag;
             vv = obj.void_data.c_vv;
             too_small = (vv < min_volume);
-            obj.void_data.too_small_start_times = obj.void_data.updated_start_times(too_small);
-            obj.void_data.too_small_end_times = obj.void_data.updated_end_times(too_small);
+            bad_starts = obj.void_data.updated_start_times(too_small);
+            bad_ends = obj.void_data.updated_end_times(too_small);
             
-            obj.void_data.updateDetections(obj.void_data.too_small_start_times, obj.void_data.too_small_end_times);
+            obj.void_data.invalidateRanges(bad_starts, bad_ends, 'too_small');
         end
         function evaluateUncertainty(obj)
             %
@@ -352,6 +336,7 @@ classdef void_finder2 <handle
                 error('mismatched dimensions');
             end
                        
+            obj.certainty_level_array = zeros(1, length(obj.void_data.updated_start_times));
             for k = 1:length(obj.void_data.updated_start_times)
                 start_time = obj.void_data.updated_start_times(k);
                 end_time = obj.void_data.updated_end_times(k);
@@ -364,6 +349,7 @@ classdef void_finder2 <handle
                 
                 if start_time == end_time || end_time < start_time
                     disp('markers overlap')
+                    %TODO: thie void must be removed
                     continue
                 end
                 idxs = obj.data.cur_stream_data.time.getNearestIndices([start_time, end_time]);
@@ -391,6 +377,9 @@ classdef void_finder2 <handle
                     obj.certainty_level_array(k) = 3;
                 end
             end    
+            temp1 = obj.certainty_level_array == 0;
+           
+            obj.void_data.invalidateRanges(obj.void_data.updated_start_times(temp1),obj.void_data.updated_end_times(temp1), 'too_small'); 
         end
         function findSolidVoids(obj)
             %

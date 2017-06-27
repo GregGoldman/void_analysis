@@ -116,6 +116,7 @@ classdef data < handle
             %   inputs:
             %   ------------
             %   - file_path: path of expt to load
+            
             obj.cur_expt = notocord.file(file_path);
         end
         function loadExptOld(obj,index)

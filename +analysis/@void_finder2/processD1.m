@@ -14,7 +14,7 @@ TOO_CLOSE = obj.options.d1_spike_window;
 %seconds. only care abt a sharp up or down, not one after the other.
 %spikes which are closer together than TOO_CLOSE are considered glitches
 
-[pos_pres_in_neg, idx_of_loc_in_neg] = ismembertol(positives,negatives,TOO_CLOSE, 'DataScale', 1); %{'OutputAllIndices',true %}
+[pos_pres_in_neg, idx_of_loc_in_neg] = ismembertol(positives,negatives,TOO_CLOSE, 'DataScale', 1); 
 % returns an array containing logical 1 (true) where the elements of A are within tolerance of the elements in B
 % also returns an array, LocB, that contains the index location in B for each element in A that is a member of B.
 evap_POI = positives(~pos_pres_in_neg);
@@ -35,60 +35,29 @@ function h__findGlitches(obj,positives,negatives, pos_pres_in_neg, idx_of_loc_in
 glitch_start_peaks = positives(pos_pres_in_neg);
 glitch_end_peaks = negatives(bad_neg_idxs);
 
-obj.void_data.glitch_start_times = [];
-obj.void_data.glitch_end_times = [];
 TIME_THRESH = obj.options.glitch_time_window;
-for i = 1:length(glitch_start_peaks)
-    start_time = glitch_start_peaks(i) - TIME_THRESH;
-    end_time = glitch_end_peaks(i) + TIME_THRESH;
-    
-    [bad_starts, bad_ends] = obj.void_data.getMarkersInTimeRange(start_time, end_time);
-    
-    temp = obj.void_data.glitch_start_times;
-    obj.void_data.glitch_start_times = union(temp,bad_starts);
-    
-    temp2 = obj.void_data.glitch_end_times;
-    obj.void_data.glitch_end_times = union(temp2,bad_ends);
-    
-end
+[bad_starts, bad_ends] = obj.void_data.getMarkersInTimeRange(glitch_start_peaks - TIME_THRESH, glitch_end_peaks + TIME_THRESH);
 
-obj.void_data.updateDetections(obj.void_data.glitch_start_times, obj.void_data.glitch_end_times);
-
+obj.void_data.invalidateRanges(bad_starts, bad_ends, 'glitch', 'overwrite', true);
 end
 function h__findEvaporations(obj,evap_POI)
 %   for now, cut out 10 seconds on either side, although this has the
 %   potential to cause problems...
 %   shows up roughly in the middle of the evaporation period
 
-start_times = obj.void_data.updated_start_times;
-end_times = obj.void_data.updated_end_times;
 EVAP_WINDOW = obj.options.evap_time_window;
 
-start_deletions = [];
-end_deletions = [];
+left_edge = evap_POI - EVAP_WINDOW;
+right_edge = evap_POI + EVAP_WINDOW;
 
-for (i = 1:length(evap_POI))
-    left_edge = evap_POI(i) - EVAP_WINDOW;
-    right_edge = evap_POI(i) + EVAP_WINDOW;
-    
-    [bad_starts, bad_ends] = obj.void_data.getMarkersInTimeRange(left_edge, right_edge);
-    
-    start_deletions = union(start_deletions, bad_starts);
-    end_deletions = union(end_deletions, bad_ends);
-end
-
-obj.void_data.evap_start_times = start_deletions;
-obj.void_data.evap_end_times = end_deletions;
-
-obj.void_data.updateDetections(obj.void_data.evap_start_times, obj.void_data.evap_end_times);
+[bad_starts, bad_ends] = obj.void_data.getMarkersInTimeRange(left_edge, right_edge);
+obj.void_data.invalidateRanges(bad_starts, bad_ends, 'evap', 'overwrite', true);
 end
 function h__findResets(obj,reset_POI)
 %   Take the first start point within the reset windown near the big reset
 %   jump and the last end point. These tend to be correct
 %   remove anything in between
 
-start_times = obj.void_data.updated_start_times;
-end_times = obj.void_data.updated_end_times;
 RES_WINDOW = obj.options.reset_time_window;
 
 start_deletions = [];
@@ -96,6 +65,7 @@ end_deletions = [];
 
 good_starts = [];
 good_ends = [];
+
 for i = 1:length(reset_POI)    
     %find the start points near the rest point
     %keep only the first one
@@ -105,26 +75,22 @@ for i = 1:length(reset_POI)
     [close_starts, close_ends] = obj.void_data.getMarkersInTimeRange(left_edge, right_edge);
     % at this point, it is possible that all of these points were already
     % deleted by glitch detection (possibly incorrectly). Have to check
-    if length(close_starts) ~= 0
+    if ~isempty(close_starts)
         starts_to_remove = close_starts(2:end);
         
         start_to_save = close_starts(1);
         start_deletions = union(start_deletions, starts_to_remove);
         good_starts = union(good_starts,start_to_save);
-        
     end
-    if length(close_ends) ~= 0
+    if ~isempty(close_ends)
         ends_to_remove = close_ends(1:end-1);
         ends_to_save = close_ends(end);
         end_deletions = union(end_deletions, ends_to_remove);
         good_ends = union(good_ends, ends_to_save);
-        
     end
 end
-obj.void_data.removed_reset_start_times = start_deletions;
-obj.void_data.removed_reset_end_times = end_deletions;
+obj.void_data.invalidateRanges(start_deletions, end_deletions, 'removed_reset');
 
 obj.void_data.reset_start_times = good_starts;
-obj.void_data.reset_end_times = good_ends
-obj.void_data.updateDetections(obj.void_data.removed_reset_start_times,obj.void_data.removed_reset_end_times);
+obj.void_data.reset_end_times = good_ends;
 end

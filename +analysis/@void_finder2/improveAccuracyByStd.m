@@ -21,23 +21,23 @@ end
 x_start_intersect = zeros(1,length(start_times));
 x_end_intersect = zeros(1,length(end_times));
 
-
 proximity_issue_starts = [];
 proximity_issue_ends = [];
 
 time_window = 1;
 time_increment = 0.05;
 base_skip_time = 5;
+points_to_collect = (1:10);
 
-filter = sci.time_series.filter.smoothing(0.1,'type','rect');
+FREQUENCY = 0.1;
+TYPE = 'rect'; %TODO: add to options class
+
+filter = sci.time_series.filter.smoothing(FREQUENCY,'type',TYPE);
 temp = obj.data.cur_stream_data.subset.fromStartAndStopTimes(start_times - base_skip_time - 2*time_window  , end_times + base_skip_time + 2*time_window , 'un', 0);
 temp2 = temp{1};
 filtered_data = temp2.filter(filter);
 
 obj.data.rect_filtered_data = filtered_data;
-
-points_to_collect = (1:10);
-
 
 solid_starts = [];
 solid_ends = [];
@@ -67,11 +67,9 @@ for k = 1:length(start_times)
         idx_edges = data.time.getNearestIndices([base_left_edge, base_right_edge]);
         idxs_in_range = idx_edges(1): idx_edges(2);
         data_in_range = raw_data(idxs_in_range);
-        
-        
+
         m = mean(data_in_range);
         s = std(data_in_range);
-        
         
         right_edge = base_right_edge;
         cur_times = right_edge + points_to_collect*time_increment;
@@ -90,7 +88,7 @@ for k = 1:length(start_times)
             cur_idxs = data.time.getNearestIndices(cur_times);
             cur_vals = raw_data(cur_idxs);
         end
-        if x_start_intersect(k) ==0
+        if x_start_intersect(k) == 0
             x_start_intersect(k) = cur_times(1);
         end
     else
@@ -113,7 +111,6 @@ for k = 1:length(start_times)
         
         m = mean(data_in_range);
 
-        
         d = data.d;
         [max_val, idx]= max(d);
         max_time = data.time.getTimesFromIndices(idx);
@@ -165,8 +162,5 @@ obj.void_data.proximity_issue_starts = proximity_issue_starts;
 obj.void_data.updated_start_times = x_start_intersect;
 obj.void_data.updated_end_times = x_end_intersect;
 
-obj.void_data.updateDetections(solid_starts,solid_ends);
-
-obj.void_data.solid_void_start_times = [obj.void_data.solid_void_start_times(:)', solid_starts(:)'];
-obj.void_data.solid_void_end_times = [obj.void_data.solid_void_end_times(:)'; solid_ends(:)'];
+obj.void_data.invalidateRanges(solid_starts, solid_ends, 'solid_void')
 end
