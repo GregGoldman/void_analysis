@@ -42,6 +42,8 @@ obj.data.rect_filtered_data = filtered_data;
 solid_starts = [];
 solid_ends = [];
 
+
+filtered_sections_to_delete = [];
 for k = 1:length(start_times)
     data = filtered_data(k);
     raw_data = data.d;
@@ -119,6 +121,10 @@ for k = 1:length(start_times)
             solid_starts(end + 1) = x_start_intersect(k); %because this has already been adjusted. Not super efficient..... :( will fix later
             solid_ends(end + 1) = end_times(k);
             x_end_intersect(k) = end_times(k);
+            
+            filtered_sections_to_delete(end+1) = k;
+            % get rid of that section in the filtered data because it
+            % complicates indexing for the shape comparison with kmeans
         else
             s = std(data_in_range);
             left_edge = base_left_edge;
@@ -163,4 +169,5 @@ obj.void_data.updated_start_times = x_start_intersect;
 obj.void_data.updated_end_times = x_end_intersect;
 
 obj.void_data.invalidateRanges(solid_starts, solid_ends, 'solid_void')
+obj.data.rect_filtered_data(filtered_sections_to_delete) = [];
 end

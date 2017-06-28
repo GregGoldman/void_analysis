@@ -30,10 +30,6 @@ classdef void_data < handle
         updated_start_times
         updated_end_times
         
-        % I don't think I use these two:
-        final_start_times
-        final_end_times
-        
         calibration_start_times
         calibration_end_times
         

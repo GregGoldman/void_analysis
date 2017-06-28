@@ -91,6 +91,14 @@ for i = 1:length(reset_POI)
 end
 obj.void_data.invalidateRanges(start_deletions, end_deletions, 'removed_reset');
 
+if length(good_starts) ~= length(good_ends)
+   ind =  sl.array.nearestPoint2(good_starts,good_ends);
+   
+   good_starts = good_starts(~isnan(ind));
+   good_ends = good_ends(ind(~isnan(ind)));
+   
+end
+
 obj.void_data.reset_start_times = good_starts;
 obj.void_data.reset_end_times = good_ends;
 end

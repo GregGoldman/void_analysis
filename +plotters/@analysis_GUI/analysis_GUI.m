@@ -132,13 +132,16 @@ classdef analysis_GUI < handle
             set(obj.h.filter_menu, 'callback', {@obj.cb_filterChanged});
             
             a = obj.h.top_axes;
-            set(a,'buttondownfcn', {@obj.cb_addVoid});
-            
+
             % annoying matlab default
             set(a,'NextPlot', 'replacechildren');
             b = obj.h.bottom_axes;
             set(b,'NextPlot', 'replacechildren');
+                  
             
+            set(a,'buttondownfcn', {@obj.cb_addVoid});
+            obj.showScale(a);
+
             % show the lists we can at this point
             obj.initEventTypes;
             obj.initCertaintyList;
@@ -442,21 +445,22 @@ classdef analysis_GUI < handle
             cur_start_time = obj.start_marker_times(obj.cur_marker_idx_in_marker_array);
             cur_end_time = obj.end_marker_times(obj.cur_marker_idx_in_marker_array);
             
-            data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw',[cur_start_time, cur_end_time]);
+            mid_length = (cur_start_time + cur_end_time)/2;
+            right = mid_length + 5;
+            left = mid_length - 5;
+            
+            data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw',[left, right]);
             miny = min(data_in_range);
             maxy = max(data_in_range);
             
             % try to get the start/end window to be 10 seconds long
-            mid_length = (cur_start_time + cur_end_time)/2;
-            right = mid_length + 5;
-            left = mid_length - 5;
             while right < cur_end_time
                 right = right + 0.5;
             end
             while left > cur_start_time
                 left = left - 0.5;
             end
-            
+
             % try to get the vertical window to be 2 units tall
             mid_height = (miny + maxy)/2;
             top = mid_height + 1;
@@ -728,6 +732,7 @@ classdef analysis_GUI < handle
                     obj.jumpToTime(obj.time_index);
                 end
             end
+            obj.showScale(obj.h.top_axes);
         end
         function cb_prevPressed(obj,~,~)
             if obj.looking_at_voids_flag
@@ -738,6 +743,7 @@ classdef analysis_GUI < handle
                     obj.jumpToTime(obj.time_index);
                 end
             end
+            obj.showScale(obj.h.top_axes);
         end
         function cb_browseClicked(obj,~,~)
             obj.browseExpts();
