@@ -21,6 +21,7 @@ for j = 1:length(starts)
     stop = stops(j);
     idx = idx + 1;
     
+    %TODO: don't make this depend on order. Be able to find times
     cur_rect_filt_data = all_rect_filtered_data(j);
     
 

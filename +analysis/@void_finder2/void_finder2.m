@@ -81,8 +81,6 @@ classdef void_finder2 <handle
             %       obj.updated_start_times, obj.updated_end_times
             obj.processD2();
             
-            
-            
             %Handling balance calibration
             % ---------------------------------------------
             obj.IDCalibration();
@@ -125,15 +123,20 @@ classdef void_finder2 <handle
             % Iterates through the marker pairs and looks for large changes
             % relative to the mean to find starts/stops (6/23/17)
             
+            % THIS NEEDS TO BE THE LAST THING TO RUN BEFORE compareKMeans 
+            
             %----------------------------------------------
-           % obj.compareKMeans();
+             obj.compareKMeans();
             % Matches the filtered data to previously identified shapes
             %
-            
             %----------------------------------------------------------
+            obj.removeShortAndSmall(MIN_VOID_TIME, NOISE_MULTIPLIER);
+            % good to do this again          
+            
+            %-----------------------------------------------------
             %obj.evaluateUncertainty();
             % THIS FCN SHOULD LIKELY BE DELETED!
-            %       at least call it evaluateLinearity (more accuracte)
+            %       **at least call it evaluateLinearity (more accuracte)
             % Ranks the likelyhood of a proper marking by the residuals
             % from a straight line drawn between start and end markers
             % (residuals normalized to the magnitude of the voided volume)

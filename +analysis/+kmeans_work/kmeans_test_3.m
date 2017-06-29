@@ -29,7 +29,7 @@ end
 end
 toc
 %-------------------------------------
-
+%{
 [I C] = kmeans(normalized_to_save, 15);
 %plot(C','LineWidth',2);
 %idxs = 1:15;
@@ -51,6 +51,26 @@ end
 
 subplot(4,4,16)
 hist(I)
+%}
+%--------------------
+[I C] = kmeans(norm, 20);
+%plot(C','LineWidth',2);
+%idxs = 1:15;
+%temp = mat2cell(idxs',ones(15,1));
+%temp2 = cellfun(@num2str,temp, 'UniformOutput', false);
+%legend(temp2)
+
+figure
+num_I = sum(I == 1:20);
+total_analyzed = sum(num_I);
+
+for k = 1:20
+subplot(4,5,k)
+plot(C(k,:)')
+p =  num_I(k) / total_analyzed;
+
+title(sprintf('%0u , %0.1f %%',k, p*100))
+end
 
 
 comments = {'each row of C is a cluster. Each column of C is a dimension in the data points';...
@@ -59,4 +79,4 @@ comparison_data.I = I;
 comparison_data.C = C;
 comparison_data.norm = normalized_to_save;
 comparison_data.comments = comments;
- save('comparison_data_15_filtered_fixed','-struct', 'comparison_data')
+ save('comparison_data_15_filtered_final','-struct', 'comparison_data')

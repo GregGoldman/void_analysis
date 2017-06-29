@@ -100,3 +100,18 @@ obj.u_start_times = start_markers;
 dbcont
 %}
 
+%{
+results{6}
+2.0967
+
+results{3}
+   1.0e+04 *
+    3.1686
+    4.0855
+    4.3412
+    5.8895
+    6.0015
+results{7} -> 4.9013 * 10^4
+
+
+%}
