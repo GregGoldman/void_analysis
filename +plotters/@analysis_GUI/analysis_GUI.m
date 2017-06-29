@@ -40,12 +40,18 @@ classdef analysis_GUI < handle
     certainty_listbox
     filter_menu
     
+    nudge_right
+    nudge_left
+    
     
     TODO:
     --------
     add a place to update info about the processing: minimum volume
                                                      maximum slope
                                                      ??
+    everything in code that is about certainty should be changed to
+    linearity. certainty is not an accurate representation of what is being
+    measured.
     
     BREAK THIS UP INTO SMALLER CLASSES!!!!!!!!!
     %}
@@ -98,6 +104,11 @@ classdef analysis_GUI < handle
         
         marker_idxs_shown_in_times_listbox
         
+        data_to_plot
+        data_plot_handle
+        
+        comments
+
     end
     methods
         function obj = analysis_GUI()
@@ -130,14 +141,21 @@ classdef analysis_GUI < handle
             set(obj.h.event_selection_listbox, 'callback', {@obj.cb_eventTypeChanged});
             set(obj.h.certainty_listbox, 'callback', {@obj.cb_certaintySortChanged});
             set(obj.h.filter_menu, 'callback', {@obj.cb_filterChanged});
+            set(obj.h.nudge_right, 'callback', {@obj.cb_nudge});
+            set(obj.h.nudge_left, 'callback', {@obj.cb_nudge});
+            
             
             a = obj.h.top_axes;
-
+             
             % annoying matlab default
             set(a,'NextPlot', 'replacechildren');
             b = obj.h.bottom_axes;
             set(b,'NextPlot', 'replacechildren');
                   
+            axes(a)
+            grid on
+            axes(b)
+            grid on
             
             set(a,'buttondownfcn', {@obj.cb_addVoid});
             obj.showScale(a);
@@ -200,6 +218,7 @@ classdef analysis_GUI < handle
             %   the GUI. Also initialized the cur_marker_idx to be 0. Also
             %   updates the labels at the top of the GUI
             disp('done');
+            obj.showScale(obj.h.top_axes);
         end
         function processStream(obj)
             %
@@ -216,6 +235,10 @@ classdef analysis_GUI < handle
                 switch response
                     case 'No'
                         return
+                    case 'Yes'
+                        
+                    otherwise %empty case (user hit (X))
+                        return                   
                 end
             end
             obj.void_finder2.findPossibleVoids();
@@ -229,6 +252,7 @@ classdef analysis_GUI < handle
             obj.jumpToMarker(1);
             
             obj.stream_has_been_processed = true;
+            obj.showScale(obj.h.top_axes);
         end
         function plotMarkers(obj)
             %
@@ -275,6 +299,26 @@ classdef analysis_GUI < handle
             set(a,'buttondownfcn', {@obj.cb_addVoid});
             set(a,'NextPlot', 'replacechildren');
         end
+        function commentProximityIssues(obj)
+            %
+            %   obj.commentProximityIssues
+            %
+            %   Puts a comment in those makers which have proximity issues
+            %
+            
+            obj.getDataFromAllMarkers();
+            starts = obj.void_finder2.void_data.proximity_issue_starts;
+            % only have to compare the starts because both starts and ends
+            % are tagged if either side is close to another void
+            
+            for k = 1:length(starts)
+                temp = obj.start_marker_times == starts(k);
+                if sum(temp) == 1
+                    cur_marker = obj.marker_objs{temp};
+                    cur_marker.comment = 'Potential Proximity Issue';
+                end
+            end
+        end
         function showEventType(obj, event_type)
             %
             %    obj.showEventType(event_type)
@@ -293,6 +337,9 @@ classdef analysis_GUI < handle
             switch event_type
                 case 'Voids Found'
                     obj.looking_at_voids_flag = true;
+                case 'Possible Solids'
+                    a = obj.void_finder2.void_data.possible_solid_start_times;
+                    b = obj.void_finder2.void_data.possible_solid_end_times;
                 case 'Calibration'
                     a = obj.void_finder2.void_data.calibration_start_times;
                     b = obj.void_finder2.void_data.calibration_end_times;
@@ -330,19 +377,26 @@ classdef analysis_GUI < handle
                 
                 obj.times_of_interest = [];
                 
-                tolerance = 60;
+                tolerance = 15;
                 stop_idx = length(d);
                 k = 1;
                 while(k < stop_idx)
-                    obj.times_of_interest(end+1) = d(k);
                     temp = d - d(k) < tolerance;
+                    % temp is mask of indices within tolerance of time of
+                    % d(k)
+                    idxs_in_range = find(temp);
+
+                    mid_point = (d(k)+ d(idxs_in_range(end)))/2; %middle of all the points in the range of the data
+                    obj.times_of_interest(end+1) = mid_point;
+           
                     temp2 = find(~temp);
+                    % temp 2 is all the times not within the tolerance (all
+                    % times greater than d(k) + tolerance)
                     
                     if isempty(temp2)
                         break
                     else
-                        temp3 = find(~temp);
-                        k = temp3(1); %skip over the times we have already seen
+                        k = temp2(1); %skip over the times we have already seen
                     end
                 end
                 % times_of_interest is now an array that will have start
@@ -358,11 +412,10 @@ classdef analysis_GUI < handle
             %   obj.refreshTimesList()
             %
             %   updates the list of times to view (upper right of GUi)
-            
-            if obj.looking_at_voids_flag
-                obj.getDataFromAllMarkers();
+            obj.getDataFromAllMarkers();
                 % now have start/end times, vv, vt, and certainty for each marker pair
-                
+            if obj.looking_at_voids_flag
+
                 certainty = obj.certainty_level;
                 temp = obj.h__certaintyToNum(certainty);
                 
@@ -409,6 +462,7 @@ classdef analysis_GUI < handle
             obj.vv = zeros(1,n);
             obj.vt = zeros(1,n);
             obj.certainty_array = zeros(1,n);
+            obj.comments = cell(1,n);
             for k = 1:n
                 % Q: should this be a method of the marker object?
                 cm = obj.marker_objs{k};
@@ -417,6 +471,7 @@ classdef analysis_GUI < handle
                 obj.vv(k) = cm.vv;
                 obj.vt(k) = cm.vt;
                 obj.certainty_array(k) = cm.certainty;
+                obj.comments{k} = cm.comment;
             end
         end
         function jumpToMarker(obj, index)
@@ -477,7 +532,9 @@ classdef analysis_GUI < handle
             axis([left, right, bottom, top])
             obj.syncViewLines();
             obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
             set(obj.h.times_listbox,'Value',obj.cur_marker_idx_in_times_listbox);
+            obj.showScale(obj.h.top_axes);
         end
         function syncViewLines(obj,~,~)
             %
@@ -515,6 +572,24 @@ classdef analysis_GUI < handle
             set(obj.zoom_lines.a, 'xdata',[xa, xa]);
             set(obj.zoom_lines.b, 'xdata', [xb, xb]);
         end
+        function updateCommentBox(obj)
+            %
+            %   obj.updateCommentBox()
+            %
+            %   If there is a comment for a marker, that comment is
+            %   displayed in the box.
+            
+            cur_idx = obj.cur_marker_idx_in_marker_array;
+            cur_marker = obj.marker_objs{cur_idx};
+            
+            to_show = cur_marker.comment;          
+            
+            if isempty(to_show)
+                to_show = 'Enter a comment';                
+            end
+            
+            set(obj.h.comment_text, 'String', to_show)
+        end
         function updateMarkerDetailsBox(obj)
             %
             %   obj.updateMarkerDetailsBox()
@@ -536,7 +611,7 @@ classdef analysis_GUI < handle
             data{2} = ['End Time: ', num2str(b)];
             data{3} = ['Void Volume: ', num2str(c)];
             data{4} = ['Void Time: ', num2str(d)];
-            data{5} = ['Certainty: ', num2str(e)];
+            data{5} = ['Linearity: ', num2str(e)];
             
             set(obj.h.details_listbox, 'String', data)
         end
@@ -568,7 +643,9 @@ classdef analysis_GUI < handle
             axis auto
             axes(obj.h.top_axes);
             axis auto;
+            axis normal
             obj.syncViewLines();
+            obj.showScale(obj.h.top_axes);
         end
         function saveCurrentData(obj)
             %
@@ -594,7 +671,7 @@ classdef analysis_GUI < handle
                 disp('user cancelled save')
                 return
             end
-            
+
             current_loc = cd(save_loc{1});
             
             file_path = obj.expt_path_list{obj.selected_expt_idx};
@@ -603,10 +680,11 @@ classdef analysis_GUI < handle
             end_times = obj.end_marker_times;
             vv = obj.vv;
             vt = obj.vt;
+            comments = obj.comments;
             
             [~, name, ~] = fileparts(file_path);
             file_name = sprintf('%s_%s',name,'reviewed');
-            save(file_name,'start_times', 'end_times', 'vv', 'vt');
+            save(file_name,'start_times', 'end_times', 'vv', 'vt', 'comments');
             disp('file saved to:');
             disp(save_loc);
             disp(file_name);
@@ -646,14 +724,15 @@ classdef analysis_GUI < handle
             %   obj.jumpToTime
             %
             %   When looking at times of interest (not markers), jumps to a
-            %   new time window of 60 seconds on from the time point of
-            %   interest
+            %   new time window of 10 seconds from the time point of
+            %   interest. Plots any markers in the window with * 
+            
             if ~isempty(obj.times_of_interest)
                 obj.time_index = index;
                 start = obj.times_of_interest(index);
                 
-                left = start - 5;
-                right = start + 60;
+                left = start - 10;
+                right = start + 10;
                 
                 if left < 0
                     left = 0;
@@ -662,19 +741,32 @@ classdef analysis_GUI < handle
                 if right > end_time
                     right = end_time;
                 end
-                
                 data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw',[left, right]);
+                
+                
                 miny = min(data_in_range);
                 maxy = max(data_in_range);
+                midy = (miny + maxy) /2;
+                
+                bottom = midy - 1.5;
+                top = midy + 1.5;
+                
+                while bottom > miny
+                    bottom = bottom - 0.1;
+                end
+                while(top < maxy)
+                    top = top + 0.1;
+                end
+                
                 a = obj.h.top_axes;
                 axes(a);
-                axis([left, right, miny - 1, maxy + 1])
+                axis([left, right, bottom, top])
                 obj.syncViewLines();
             else
                 obj.resetView();
             end
             set(obj.h.times_listbox, 'value', obj.time_index);
-            
+            obj.showScale(obj.h.top_axes);
         end
         function filterChanged(obj, selection)
             %
@@ -683,19 +775,22 @@ classdef analysis_GUI < handle
             %   Changes the level of filtering that data goes through
             %   before plotting
             %
-            disp('NYI')
-            keyboard
             switch selection
                 case 1
-                    % plot the raw data
+                    %plot the raw data
+                    obj.data_to_plot = obj.void_finder2.data.cur_stream_data;
                 case 2
                     % filter lightly and plot
                     filter = sci.time_series.filter.smoothing(0.01,'type','rect');
-                    temp = obj.void_finder2.data.cur_stream_data.filter(filter);
+                    obj.data_to_plot = obj.void_finder2.data.cur_stream_data.filter(filter);
                 case 3
                     % plot the strongly filtered data from void_finder2
-                    
+                    obj.data_to_plot = obj.void_finder2.data.filtered_cur_stream_data;
+                    msgbox('warning: strongly filtered data causes timeshifts when viewing data')
+                    pause(2)
             end
+            obj.h__plotTopStream();
+            obj.showScale(obj.h.top_axes);
         end
         function nextStream(obj)
             %
@@ -721,6 +816,23 @@ classdef analysis_GUI < handle
             obj.cur_stream_number = index;
             obj.h__streamUpdated();
         end
+        function nudge(obj,duration)
+            %
+            %   obj.nudge(duration)
+            %
+            %   Shifts the viewing window over by duration
+            
+            ax = obj.h.top_axes;
+            axes(ax)
+            cur_left = ax.XLim(1);
+            cur_right = ax.XLim(2);
+            
+            new_left = cur_left + duration;
+            new_right = cur_right + duration;
+            
+            axis([new_left,new_right,ax.YLim(1), ax.YLim(2)])
+            obj.showScale(ax); 
+        end
     end
     methods % callback functions
         function cb_nextPressed(obj, ~,~)
@@ -738,7 +850,7 @@ classdef analysis_GUI < handle
             if obj.looking_at_voids_flag
                 obj.scrollLeft();
             else
-                if obj.time_index - 1 >= 0
+                if obj.time_index - 1 > 0
                     obj.time_index = obj.time_index - 1;
                     obj.jumpToTime(obj.time_index);
                 end
@@ -777,6 +889,7 @@ classdef analysis_GUI < handle
         end
         function cb_resetView(obj,~,~)
             obj.resetView();
+            obj.showScale(obj.h.top_axes);
         end
         function cb_saveAndClose(obj,~,~)
             message = 'Are you sure you want to save and close?';
@@ -844,8 +957,16 @@ classdef analysis_GUI < handle
            obj.jumpToMarker(1);
         end
         function cb_filterChanged(obj,src,ev)
-            selection = src.String{src.Value};
+            selection = src.Value;
             obj.filterChanged(selection)
+        end
+        function cb_nudge(obj,src,ev)
+            switch src.Tag
+                case 'nudge_right'
+                    obj.nudge(2);
+                case 'nudge_left'
+                    obj.nudge(-2);
+            end
         end
     end
     methods % initialization of GUI
@@ -860,7 +981,7 @@ classdef analysis_GUI < handle
             %   Updates the list of event types to look at.(ex spike times,
             %   evaporations, etc.)
             
-            list = {'Voids Found';'Calibration' ; 'Spikes' ; 'Evaporations' ; 'Glitches'; 'Bad Resets' ; 'Unpaired'; 'Too Small'; 'Slope/Solids'; 'User-Deleted'};
+            list = {'Voids Found'; 'Possible Solids'; 'Calibration' ; 'Spikes' ; 'Evaporations' ; 'Glitches'; 'Bad Resets' ; 'Unpaired'; 'Too Small'; 'Slope/Solids'; 'User-Deleted'};
             set(obj.h.event_selection_listbox, 'String', list);
         end
     end
@@ -871,10 +992,10 @@ classdef analysis_GUI < handle
                 
                 x1 = ev.IntersectionPoint(1) - 1;
                 y1 = obj.void_finder2.data.getDataFromTimePoints('raw',x1);
-                temp1 = line(a,x1,y1, 'color', 'black', 'marker', 'o', 'markersize', 10, 'hittest', 'on');
+                temp1 = line(a,x1,y1, 'color', 'black', 'marker', 'o', 'markersize', 12, 'hittest', 'on');
                 x2 = ev.IntersectionPoint(1) + 1;
                 y2 = obj.void_finder2.data.getDataFromTimePoints('raw', x2);
-                temp2 = line(a,x2,y2, 'color', 'black', 'marker', 's', 'markersize', 10, 'hittest', 'on');
+                temp2 = line(a,x2,y2, 'color', 'black', 'marker', 's', 'markersize', 12, 'hittest', 'on');
                 
                 obj.marker_objs{end+1} = plotters.marker_pair(obj,length(obj.marker_objs)+1,temp1,temp2);
                 
@@ -892,12 +1013,14 @@ classdef analysis_GUI < handle
             certainty_as_num =  obj.h__certaintyToNum(obj.certainty_level);
             temp = (cur_marker.certainty == certainty_as_num) || certainty_as_num == 0;
             
+            obj.getDataFromAllMarkers();
             if obj.looking_at_voids_flag && temp                
                 obj.refreshTimesList();
                 obj.cur_marker_idx_in_times_listbox = find(obj.marker_idxs_shown_in_times_listbox == cur_marker.marker_index);
                 set(obj.h.times_listbox, 'Value',obj.cur_marker_idx_in_times_listbox);
             end
             obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
             end
         end
         function cb_clickLine(obj,src,ev)
@@ -952,6 +1075,7 @@ classdef analysis_GUI < handle
             maxy = max(data_in_range);
             axis([minx, maxx, miny, maxy]);
             end
+            obj.showScale(obj.h.top_axes);
         end
         function cb_clickmarker(obj,src,ev,marker_obj)
             %
@@ -974,15 +1098,16 @@ classdef analysis_GUI < handle
                 set(obj.h.times_listbox, 'Value',obj.cur_marker_idx_in_times_listbox);
             end
             obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
             
             if ev.Button == 1
-                set(ancestor(src,'figure'),'windowbuttonmotionfcn',{@obj.cb_dragmarker,src})
+                set(ancestor(src,'figure'),'windowbuttonmotionfcn',{@obj.cb_dragmarker,src,marker_obj})
                 set(ancestor(src,'figure'),'windowbuttonupfcn',{@obj.cb_stopdragging,src, marker_obj})
             elseif ev.Button == 3
                 obj.h__deleteMarker(marker_obj)
             end
         end
-        function cb_dragmarker(obj,fig,ev,src)
+        function cb_dragmarker(obj,fig,ev,src, marker_obj)
             coords=get(gca,'currentpoint');
             x=coords(1,1,1);
             end_time = obj.void_finder2.data.cur_stream_data.time.end_time;
@@ -990,6 +1115,16 @@ classdef analysis_GUI < handle
             if x < 0 || x> end_time
                 return
             end
+            if src == marker_obj.start_handle
+                if x >= marker_obj.end_handle.XData
+                    return
+                end
+            elseif src == marker_obj.end_handle
+                if x <= marker_obj.start_handle.XData
+                    return
+                end
+            end
+
             y = obj.void_finder2.data.getDataFromTimePoints('raw',x);
             set(src,'xdata',x,'ydata',y);
         end
@@ -1013,6 +1148,7 @@ classdef analysis_GUI < handle
                 set(obj.h.times_listbox, 'Value',obj.cur_marker_idx_in_times_listbox);
             end
             obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
         end
     end
     methods (Hidden) % helpers
@@ -1027,22 +1163,39 @@ classdef analysis_GUI < handle
             
             obj.void_finder2.data.getStream(obj.cur_stream_number);
             set(obj.h.stream_num_text, 'String', obj.cur_stream_number);
-            a = obj.h.top_axes;
-            axes(a);
-            hold off
-            obj.void_finder2.data.plotData('raw',a);
+           
+            obj.data_to_plot = obj.void_finder2.data.cur_stream_data;
             
+            
+            obj.h__plotTopStream();
+                
             b = obj.h.bottom_axes;
-            axes(b);
             hold off
             obj.void_finder2.data.plotData('raw',b);
             
+            a = obj.h.top_axes;
             set(a,'fontsize',7);
             set(b,'fontsize',7);
             hold on
             obj.cur_marker_idx_in_marker_array = 0;
             obj.cur_marker_idx_in_times_listbox = 0;
             obj.stream_has_been_processed = false;
+        end
+        function h__plotTopStream(obj)
+            %
+            %   obj.plotStream
+            %
+            %   Plots the current stream using the data specified by
+            %   obj.data_to_plot
+            %
+            %   TODO: move this method
+            
+            axes(obj.h.top_axes);
+            set(obj.data_plot_handle,'Visible', 'off')
+            hold on
+            temp = obj.data_to_plot.plot('color',[0 0.4470 0.7410]);
+            obj.data_plot_handle = temp.render_objs{1}.h_and_l.h_plot{1};
+            uistack(obj.data_plot_handle,'bottom')
         end
         function h__scroll(obj, increment)
             %
@@ -1074,7 +1227,7 @@ classdef analysis_GUI < handle
             %   Given the handle to a marker, deletes it and it partner
             %   Inputs:
             %   --------
-            %   - src: the handle of the marker got from the callback
+            %   - marker_obj: the handle of the marker got from the callback
                        
             idx = marker_obj.marker_index;
             
@@ -1108,6 +1261,7 @@ classdef analysis_GUI < handle
                 set(obj.h.times_listbox, 'Value',obj.cur_marker_idx_in_times_listbox);
             end
             obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
             obj.void_just_deleted = true;
             % TODO: sort by time (low priority)
         end

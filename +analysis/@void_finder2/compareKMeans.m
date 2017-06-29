@@ -14,9 +14,14 @@ file_path = fullfile(package_root,'+analysis','comparison_storage','comparison_d
 load(file_path, '-mat', 'C')
 
  D = pdist2(normalized_voids, C); % returns the euclidean distances
- [~, A] = min(D,[],2);
+ [V, A] = min(D,[],2);
  %classification is now the number type of the voids we classified
 
+ A(V > 0.4) = 6;
+ % classify anything for which the min distance is greater than 0.4 --
+ % these voids are almost certainly glitches -- as a type 6 (one of the
+ % glitches)
+ 
  temp = cell(1,6);
  temp{1} = {'solid_void', [9 13]}; %remove
  temp{2} = {'resets',[2 5 17 20]};
@@ -31,8 +36,8 @@ load(file_path, '-mat', 'C')
      [rows, ~] = find(B);
      storage.(cur{1}) = sort(rows);
  end
- obj.possible_solid_start_times = starts(storage.pos_solid);
- obj.possible_solid_end_times = stops(storage.pos_solid);
+ obj.void_data.possible_solid_start_times = starts(storage.pos_solid);
+ obj.void_data.possible_solid_end_times = stops(storage.pos_solid);
  
  for k = [1,5] % allow for expansion
      cur = temp{k};

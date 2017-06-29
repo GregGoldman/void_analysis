@@ -67,6 +67,9 @@ classdef void_data < handle
         proximity_issue_starts
         proximity_issue_ends
         
+        
+        possible_solid_start_times
+        possible_solid_end_times
 
         % voided volume and voiding time
         u_vv %user

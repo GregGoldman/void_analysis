@@ -95,7 +95,7 @@ for k = 1:length(start_times)
         end
     else
         x_start_intersect(k) = start_times (k);
-        proximity_issue_starts(end+1) = start_times(k);
+        proximity_issue_starts(end+1) = k;
     end
     reset_start_flag = ismember(reset_start_times, start_times(k));
     if any(reset_start_flag)
@@ -151,7 +151,7 @@ for k = 1:length(start_times)
         end
     else
         x_end_intersect(k) = end_times(k);
-        proximity_issue_ends(end+1) = end_times(k);
+        proximity_issue_ends(end+1) = k;
     end
     reset_end_flag = ismember(reset_end_times, end_times(k));
     if any(reset_end_flag)
@@ -162,8 +162,11 @@ end
 obj.void_data.reset_start_times = reset_start_times;
 obj.void_data.reset_end_times = reset_end_times;
 
-obj.void_data.proximity_issue_ends = proximity_issue_ends;
-obj.void_data.proximity_issue_starts = proximity_issue_starts;
+
+proximity_issue_idxs = union(proximity_issue_ends, proximity_issue_starts);
+
+obj.void_data.proximity_issue_ends = x_end_intersect(proximity_issue_idxs);
+obj.void_data.proximity_issue_starts = x_start_intersect(proximity_issue_idxs);
 
 obj.void_data.updated_start_times = x_start_intersect;
 obj.void_data.updated_end_times = x_end_intersect;

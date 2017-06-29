@@ -8,7 +8,14 @@ package_root = sl.stack.getPackageRoot;
 file_path = fullfile(package_root,'+analysis','comparison_storage','comparison_data_15_filtered_final.mat');
 load(file_path, '-mat', 'C')
 
+
+
  D = pdist2(normalized_voids, C); % returns the euclidean distances
  [~, A] = min(D,[],2);
 
+ 
+ disp('The distances are:')
+ disp(D);
+ disp('Classification:')
+ disp(A);
 end
