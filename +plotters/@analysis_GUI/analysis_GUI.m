@@ -40,12 +40,18 @@ classdef analysis_GUI < handle
     certainty_listbox
     filter_menu
     
+    nudge_right
+    nudge_left
+    
     
     TODO:
     --------
     add a place to update info about the processing: minimum volume
                                                      maximum slope
                                                      ??
+    everything in code that is about certainty should be changed to
+    linearity. certainty is not an accurate representation of what is being
+    measured.
     
     BREAK THIS UP INTO SMALLER CLASSES!!!!!!!!!
     %}
@@ -62,9 +68,8 @@ classdef analysis_GUI < handle
         stream_has_been_processed
         
         top_plot_handle
-        
-        start_markers
-        end_markers
+
+        marker_objs
         
         start_marker_times
         end_marker_times
@@ -86,14 +91,24 @@ classdef analysis_GUI < handle
         % skip what becomes the current void when there is an index shift
         % from the deletion
         
-        times_to_display
+        % for times that are not void markers
+        times_of_interest
         time_index
+        
         
         deleted_starts
         deleted_ends
         
         certainty_level
+        certainty_array
         
+        marker_idxs_shown_in_times_listbox
+        
+        data_to_plot
+        data_plot_handle
+        
+        comments
+
     end
     methods
         function obj = analysis_GUI()
@@ -126,15 +141,25 @@ classdef analysis_GUI < handle
             set(obj.h.event_selection_listbox, 'callback', {@obj.cb_eventTypeChanged});
             set(obj.h.certainty_listbox, 'callback', {@obj.cb_certaintySortChanged});
             set(obj.h.filter_menu, 'callback', {@obj.cb_filterChanged});
+            set(obj.h.nudge_right, 'callback', {@obj.cb_nudge});
+            set(obj.h.nudge_left, 'callback', {@obj.cb_nudge});
+            
             
             a = obj.h.top_axes;
-            set(a,'buttondownfcn', {@obj.cb_addVoid});
-            
+             
             % annoying matlab default
             set(a,'NextPlot', 'replacechildren');
             b = obj.h.bottom_axes;
             set(b,'NextPlot', 'replacechildren');
+                  
+            axes(a)
+            grid on
+            axes(b)
+            grid on
             
+            set(a,'buttondownfcn', {@obj.cb_addVoid});
+            obj.showScale(a);
+
             % show the lists we can at this point
             obj.initEventTypes;
             obj.initCertaintyList;
@@ -186,7 +211,14 @@ classdef analysis_GUI < handle
             obj.selected_expt_path = obj.expt_path_list{obj.selected_expt_idx};
             set(obj.h.expt_id_text, 'String', obj.selected_expt_path);
             obj.void_finder2.data.loadExpt(obj.selected_expt_path);
+            
             obj.h__streamUpdated();
+            %   Loads the current stream and corresponding derivatives,
+            %   etc. Then plots the raw stream data on both sets of axes in
+            %   the GUI. Also initialized the cur_marker_idx to be 0. Also
+            %   updates the labels at the top of the GUI
+            disp('done');
+            obj.showScale(obj.h.top_axes);
         end
         function processStream(obj)
             %
@@ -195,20 +227,32 @@ classdef analysis_GUI < handle
             %   Finds the possible voids in the data and updates the lists
             %   on the GUI. Then plots all of the markers
             
+            if isempty(obj.void_finder2.data.cur_stream)
+                return
+            end
             if obj.stream_has_been_processed
                 response = questdlg('Are you sure you want to reprocess this stream? All data will be overwritten.','', 'Yes', 'No', 'No');
                 switch response
                     case 'No'
                         return
+                    case 'Yes'
+                        
+                    otherwise %empty case (user hit (X))
+                        return                   
                 end
             end
             obj.void_finder2.findPossibleVoids();
+            obj.looking_at_voids_flag = true; %should already be true, just a backup
+            
             obj.plotMarkers();
-            obj.looking_at_voids_flag = true;
+            
+            obj.certainty_level = 'all';
             obj.showEventType('Voids Found');
             set(obj.h.times_listbox, 'Value',1)
             obj.jumpToMarker(1);
+            
             obj.stream_has_been_processed = true;
+            obj.showScale(obj.h.top_axes);
         end
         function plotMarkers(obj)
             %
@@ -220,38 +264,60 @@ classdef analysis_GUI < handle
             %   lines as well as the marker type and index of the marker
             
             % delete the old markers
-            for k = 1:length(obj.start_markers)
-                cur_start = obj.start_markers{k};
-                delete(cur_start.marker_handle);
-                cur_end = obj.end_markers{k};
-                delete(cur_end.marker_handle);
-            end
             
+            for k = 1:length(obj.marker_objs)
+                if ~isempty(obj.marker_objs{k})
+                    obj.marker_objs{k}.clearLineObjs();
+                    delete(obj.marker_objs{k});
+                end
+            end
+
             a = obj.h.top_axes;
             
             obj.start_marker_times = obj.void_finder2.void_data.updated_start_times;
             obj.end_marker_times = obj.void_finder2.void_data.updated_end_times;
             
-            obj.start_markers  = cell(1,length(obj.start_marker_times));
-            obj.end_markers = cell(1,length(obj.end_marker_times));
+            obj.marker_objs = cell(1,length(obj.start_marker_times));
+            
             hold on
             for k = 1:length(obj.start_marker_times)
-                xval = obj.start_marker_times(k);
-                yval = obj.void_finder2.data.getDataFromTimePoints('raw', xval);
-                temp = line(a,xval,yval, 'color', 'black', 'marker', 'o', 'markersize', 10, 'hittest', 'on', 'buttondownfcn', {@obj.cb_clickmarker});
-                obj.start_markers{k} = plotters.void_marker(obj.cur_marker_idx, 'start', temp);
+                xval1 = obj.start_marker_times(k);
+                yval1 = obj.void_finder2.data.getDataFromTimePoints('raw', xval1);
+                temp1 = line(a,xval1,yval1, 'color', 'black', 'marker', 'o', 'markersize', 12, 'hittest', 'on');
+                
+                xval2 = obj.end_marker_times(k);
+                yval2 = obj.void_finder2.data.getDataFromTimePoints('raw',xval2);
+                temp2 = line(a,xval2,yval2, 'color', 'black','marker', 's', 'markersize', 12, 'hittest', 'on');
+                
+                obj.marker_objs{k} = plotters.marker_pair(obj,k,temp1, temp2);
+                set(temp1,'buttondownfcn', {@obj.cb_clickmarker,obj.marker_objs{k}})
+                set(temp2,'buttondownfcn', {@obj.cb_clickmarker,obj.marker_objs{k}})    
             end
-            for k = 1:length(obj.end_marker_times)
-                xval = obj.end_marker_times(k);
-                yval = obj.void_finder2.data.getDataFromTimePoints('raw', xval);
-                temp = line(a,xval,yval, 'color', 'black','marker', 's', 'markersize', 10, 'hittest', 'on', 'buttondownfcn', {@obj.cb_clickmarker});
-                obj.end_markers{k} = plotters.void_marker(obj.cur_marker_idx, 'end', temp);
-            end
-            
+
             % sometimes the buttondownfcn gets overwritten. It is unclear
             % when, easier to just do this after each plot:
             set(a,'buttondownfcn', {@obj.cb_addVoid});
             set(a,'NextPlot', 'replacechildren');
+        end
+        function commentProximityIssues(obj)
+            %
+            %   obj.commentProximityIssues
+            %
+            %   Puts a comment in those makers which have proximity issues
+            %
+            
+            obj.getDataFromAllMarkers();
+            starts = obj.void_finder2.void_data.proximity_issue_starts;
+            % only have to compare the starts because both starts and ends
+            % are tagged if either side is close to another void
+            
+            for k = 1:length(starts)
+                temp = obj.start_marker_times == starts(k);
+                if sum(temp) == 1
+                    cur_marker = obj.marker_objs{temp};
+                    cur_marker.comment = 'Potential Proximity Issue';
+                end
+            end
         end
         function showEventType(obj, event_type)
             %
@@ -271,6 +337,9 @@ classdef analysis_GUI < handle
             switch event_type
                 case 'Voids Found'
                     obj.looking_at_voids_flag = true;
+                case 'Possible Solids'
+                    a = obj.void_finder2.void_data.possible_solid_start_times;
+                    b = obj.void_finder2.void_data.possible_solid_end_times;
                 case 'Calibration'
                     a = obj.void_finder2.void_data.calibration_start_times;
                     b = obj.void_finder2.void_data.calibration_end_times;
@@ -289,7 +358,7 @@ classdef analysis_GUI < handle
                     b = obj.void_finder2.void_data.removed_reset_end_times;
                 case 'Unpaired'
                     a =  obj.void_finder2.void_data.unpaired_start_times;
-                    b =  obj.void_finder2.void_data.unpaired_stop_times;
+                    b =  obj.void_finder2.void_data.unpaired_end_times;
                 case 'Too Small'
                     a = obj.void_finder2.void_data.too_small_start_times;
                     b = obj.void_finder2.void_data.too_small_end_times;
@@ -306,43 +375,108 @@ classdef analysis_GUI < handle
                 c = union(a,b);
                 d = sort(c);
                 
-                obj.times_to_display = [];
+                obj.times_of_interest = [];
                 
-                tolerance = 60;
+                tolerance = 15;
                 stop_idx = length(d);
                 k = 1;
                 while(k < stop_idx)
-                    obj.times_to_display(end+1) = d(k);
                     temp = d - d(k) < tolerance;
+                    % temp is mask of indices within tolerance of time of
+                    % d(k)
+                    idxs_in_range = find(temp);
+
+                    mid_point = (d(k)+ d(idxs_in_range(end)))/2; %middle of all the points in the range of the data
+                    obj.times_of_interest(end+1) = mid_point;
+           
                     temp2 = find(~temp);
+                    % temp 2 is all the times not within the tolerance (all
+                    % times greater than d(k) + tolerance)
                     
                     if isempty(temp2)
                         break
                     else
-                        temp3 = find(~temp);
-                        k = temp3(1); %skip over the times we have already seen
+                        k = temp2(1); %skip over the times we have already seen
                     end
                 end
                 % times_of_interest is now an array that will have start
                 % times that skip over any other points within 1 minute
-            else
-                obj.times_to_display = obj.start_marker_times;
             end
             obj.refreshTimesList();
+            % if obj.looking_at_voids_flag is true, then the call of this
+            % function will take care of selecting those times instead of
+            % whatever is in times_of_interest
         end
         function refreshTimesList(obj)
             %
             %   obj.refreshTimesList()
             %
             %   updates the list of times to view (upper right of GUi)
-            
-            data = obj.times_to_display;
+            obj.getDataFromAllMarkers();
+                % now have start/end times, vv, vt, and certainty for each marker pair
+            if obj.looking_at_voids_flag
+
+                certainty = obj.certainty_level;
+                temp = obj.h__certaintyToNum(certainty);
+                
+                if temp ~= 0
+                  mask = obj.certainty_array == temp;
+                else
+                  mask = ones(1,length(obj.start_marker_times));
+                end
+                
+                mask = logical(mask);
+                displayed_times = obj.start_marker_times(mask);
+                displayed_vv = obj.vv(mask);
+                displayed_vt = obj.vt(mask);
+                
+                obj.marker_idxs_shown_in_times_listbox = find(mask);
+                
+                data_to_show = cell(length(displayed_times),1);
+                for k = 1: length(data_to_show)
+                    row_string = sprintf('T: %5.0f  |   VV: %2.1f   |   VT: %2.1f', displayed_times(k), displayed_vv(k), displayed_vt(k));
+                    data_to_show{k} = row_string;
+                end
+            else
+                data_to_show = cell(length(obj.times_of_interest));
+                for k = 1:length(obj.times_of_interest)
+                    data_to_show{k} = sprintf('T: %5.0f',obj.times_of_interest(k));
+                end
+            end
             times_list = obj.h.times_listbox;
-            set(times_list, 'string', data);
+            set(times_list, 'string', data_to_show);
+        end
+        function getDataFromAllMarkers(obj)
+            %
+            %
+            %   obj.getDataFromAllMarkers()
+            %
+            %   gets start times, end times, voided volume, voiding time,
+            %   and certainty from each of the marker objects.
+            
+            
+            n = length(obj.marker_objs);
+            
+            obj.start_marker_times = zeros(1,n);
+            obj.end_marker_times = zeros(1,n);
+            obj.vv = zeros(1,n);
+            obj.vt = zeros(1,n);
+            obj.certainty_array = zeros(1,n);
+            obj.comments = cell(1,n);
+            for k = 1:n
+                % Q: should this be a method of the marker object?
+                cm = obj.marker_objs{k};
+                obj.start_marker_times(k) = cm.start_time;
+                obj.end_marker_times(k) = cm.end_time;
+                obj.vv(k) = cm.vv;
+                obj.vt(k) = cm.vt;
+                obj.certainty_array(k) = cm.certainty;
+                obj.comments{k} = cm.comment;
+            end
         end
         function jumpToMarker(obj, index)
             %
-            %    obj.jumpToMarker(index, is_index*)
+            %    obj.jumpToMarker(index)
             %
             %    Switches the view to that of the marker indicated by index
             %    **the index references the number in the list of updated
@@ -351,60 +485,56 @@ classdef analysis_GUI < handle
             %    Inputs:
             %    -------
             %    index
-            
+
+            k = obj.marker_idxs_shown_in_times_listbox;
             
             if index < 1
                 return
-            elseif index > length(obj.start_marker_times)
+            elseif index > length(k)
                 return
             end
+            
             obj.cur_marker_idx_in_times_listbox = index;
-            a = obj.h.top_axes;
+            obj.cur_marker_idx_in_marker_array = k(index);
             
-            temp = obj.h.times_listbox.String(index, :);
-            % have to do this b/c the times which are displayed are rounded
-            % to the 100ths place
-            times = cellfun(@obj.h__findMarkerTime,obj.start_markers);
-            b == str2double(temp)
-            mask = ismembertol(times,b, 0.01, 'DataScale', 1);
-            obj.cur_marker_idx_in_marker_array = find(mask);
+            cur_start_time = obj.start_marker_times(obj.cur_marker_idx_in_marker_array);
+            cur_end_time = obj.end_marker_times(obj.cur_marker_idx_in_marker_array);
             
-            cur_start = obj.start_markers{mask};
-            cur_end = obj.end_markers{mask};
+            mid_length = (cur_start_time + cur_end_time)/2;
+            right = mid_length + 5;
+            left = mid_length - 5;
             
-            cur_start_time = cur_start.marker_handle.XData;
-            cur_end_time = cur_end.marker_handle.XData;
-            
-            data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw',[cur_start_time, cur_end_time]);
+            data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw',[left, right]);
             miny = min(data_in_range);
             maxy = max(data_in_range);
             
             % try to get the start/end window to be 10 seconds long
-            mid_length = (cur_start_time + cur_end_time)/2;
-            right = mid_length + 5;
-            left = mid_length - 5;
             while right < cur_end_time
                 right = right + 0.5;
             end
             while left > cur_start_time
                 left = left - 0.5;
             end
-            
+
             % try to get the vertical window to be 2 units tall
             mid_height = (miny + maxy)/2;
             top = mid_height + 1;
             bottom = mid_height - 1;
-            if top < maxy
-                top = maxy;
+            while top < maxy
+                top = top + 0.1;
             end
-            if bottom < miny
-                bottom = miny;
+            while bottom > miny
+                bottom = bottom - 0.1;
             end
             
+            a = obj.h.top_axes;
             axes(a);
             axis([left, right, bottom, top])
             obj.syncViewLines();
-            obj.updateMarkerDetails();
+            obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
+            set(obj.h.times_listbox,'Value',obj.cur_marker_idx_in_times_listbox);
+            obj.showScale(obj.h.top_axes);
         end
         function syncViewLines(obj,~,~)
             %
@@ -442,99 +572,48 @@ classdef analysis_GUI < handle
             set(obj.zoom_lines.a, 'xdata',[xa, xa]);
             set(obj.zoom_lines.b, 'xdata', [xb, xb]);
         end
-        function updateMarkerDetails(obj)
+        function updateCommentBox(obj)
             %
-            %   obj.updateMarkerDetails()
+            %   obj.updateCommentBox()
+            %
+            %   If there is a comment for a marker, that comment is
+            %   displayed in the box.
+            
+            cur_idx = obj.cur_marker_idx_in_marker_array;
+            cur_marker = obj.marker_objs{cur_idx};
+            
+            to_show = cur_marker.comment;          
+            
+            if isempty(to_show)
+                to_show = 'Enter a comment';                
+            end
+            
+            set(obj.h.comment_text, 'String', to_show)
+        end
+        function updateMarkerDetailsBox(obj)
+            %
+            %   obj.updateMarkerDetailsBox()
             %
             %   updates the list of details including start time, end time,
-            %   voided volume, and voiding time
-            %
-            %   TODO: include level of certainty!
-            
-           
-            obj.processMarkerData;
-            % updates all vv, vt, certainty_level
-            % updates start_marker_times and end_marker_times based on the
-            % values in the marker arrays (of marker objects)
-           
-            data = cell(4,1);
-            a = obj.start_markers{obj.cur_marker_idx}.marker_handle.XData;
-            b = obj.end_markers{obj.cur_marker_idx}.marker_handle.XData;
-            c = obj.vv(obj.cur_marker_idx);
-            d = obj.vt(obj.cur_marker_idx);
+            %   voided volume, voiding time, and certainty
+                        
+            cur_idx = obj.cur_marker_idx_in_marker_array;
+            cur_marker = obj.marker_objs{cur_idx};
+
+            data = cell(5,1);
+            a = cur_marker.start_handle.XData;
+            b = cur_marker.end_handle.XData;
+            c = cur_marker.vv;
+            d = cur_marker.vt;
+            e = cur_marker.certainty;
             
             data{1} = ['Start Time: ', num2str(a)];
             data{2} = ['End Time: ', num2str(b)];
             data{3} = ['Void Volume: ', num2str(c)];
             data{4} = ['Void Time: ', num2str(d)];
+            data{5} = ['Linearity: ', num2str(e)];
             
             set(obj.h.details_listbox, 'String', data)
-        end
-        function processMarkerData(obj)
-            %
-            %   obj.processMarkers()
-            %
-            %   Extracts the start and end times from each of the pairs of
-            %   markers which have been plotted. This method is necessary
-            %   because the user can move markers around, and we need a way
-            %   to get the start and end times easily from the line
-            %   objects.
-            %
-            %   updates the following properties:
-            %   - start_marker_times
-            %   - end_marker_times
-            %   - vv
-            %   - vt
-            %   - certainty_level
-            
-            start_times = zeros(1,length(obj.start_markers));
-            end_times = start_times;
-            
-            for k = 1:length(obj.start_markers)
-                cur_start = obj.start_markers{k};
-                start_times(k) = cur_start.marker_handle.XData;
-                
-                cur_end = obj.end_markers{k};
-                end_times(k) = cur_end.marker_handle.XData;
-            end
-            
-            obj.start_marker_times = start_times;
-            obj.end_marker_times = end_times;
-            
-            obj.vv = obj.void_finder2.void_data.getVV(start_times, end_times);
-            obj.vt = obj.void_finder2.void_data.getVoidingTime(start_times, end_times);
-            tic
-            obj.certainty_level = obj.void_finder2.evaluateUncertainty('start_times', start_times, 'end_times', end_times);
-            toc
-            
-            if obj.looking_at_voids_flag
-                obj.refreshTimesList();
-            end
-        end
-        function nextStream(obj)
-            %
-            %   obj.nextStream()
-            %
-            %   Increases the stream number by one and plots it
-            
-            index = obj.cur_stream_number + 1;
-            obj.jumpToStream(index);
-            obj.h__streamUpdated();
-        end
-        function jumpToStream(obj, index)
-            %
-            %   obj.jumpToStream(index)
-            %
-            %   Go to a specific stream
-            %   Inputs:
-            %   --------
-            %   - index: double -- which stream to go to
-            
-            if index > 9
-                error('outside of range of streams')
-            end
-            obj.cur_stream_number = index;
-            obj.h__streamUpdated();
         end
         function scrollRight(obj)
             %
@@ -564,7 +643,9 @@ classdef analysis_GUI < handle
             axis auto
             axes(obj.h.top_axes);
             axis auto;
+            axis normal
             obj.syncViewLines();
+            obj.showScale(obj.h.top_axes);
         end
         function saveCurrentData(obj)
             %
@@ -574,7 +655,7 @@ classdef analysis_GUI < handle
             %   found for the given stream to the directory which the user
             %   specifies (TODO: save default!!)
             
-            obj.processMarkerData();
+            obj.getDataFromAllMarkers();
             
             PACKAGE_ROOT = sl.stack.getPackageRoot;
             
@@ -590,20 +671,20 @@ classdef analysis_GUI < handle
                 disp('user cancelled save')
                 return
             end
-            
+
             current_loc = cd(save_loc{1});
             
-            name = obj.expt_name_list{obj.selected_expt_idx};
             file_path = obj.expt_path_list{obj.selected_expt_idx};
             
             start_times = obj.start_marker_times;
             end_times = obj.end_marker_times;
             vv = obj.vv;
             vt = obj.vt;
+            comments = obj.comments;
             
             [~, name, ~] = fileparts(file_path);
             file_name = sprintf('%s_%s',name,'reviewed');
-            save(file_name,'start_times', 'end_times', 'vv', 'vt');
+            save(file_name,'start_times', 'end_times', 'vv', 'vt', 'comments');
             disp('file saved to:');
             disp(save_loc);
             disp(file_name);
@@ -635,7 +716,7 @@ classdef analysis_GUI < handle
             %   TODO: have comments be displayed in the box if they have
             %   been previously saved.
             
-            cur_marker = obj.start_markers{obj.cur_marker_idx};
+            cur_marker = obj.marker_objs{obj.cur_marker_idx_in_marker_array};
             cur_marker.comment = comment;
         end
         function jumpToTime(obj, index)
@@ -643,14 +724,15 @@ classdef analysis_GUI < handle
             %   obj.jumpToTime
             %
             %   When looking at times of interest (not markers), jumps to a
-            %   new time window of 60 seconds on from the time point of
-            %   interest
-            if ~isempty(obj.times_to_display)
+            %   new time window of 10 seconds from the time point of
+            %   interest. Plots any markers in the window with * 
+            
+            if ~isempty(obj.times_of_interest)
                 obj.time_index = index;
-                start = obj.times_to_display(index);
+                start = obj.times_of_interest(index);
                 
-                left = start - 5;
-                right = start + 60;
+                left = start - 10;
+                right = start + 10;
                 
                 if left < 0
                     left = 0;
@@ -659,17 +741,32 @@ classdef analysis_GUI < handle
                 if right > end_time
                     right = end_time;
                 end
-                
                 data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw',[left, right]);
+                
+                
                 miny = min(data_in_range);
                 maxy = max(data_in_range);
+                midy = (miny + maxy) /2;
+                
+                bottom = midy - 1.5;
+                top = midy + 1.5;
+                
+                while bottom > miny
+                    bottom = bottom - 0.1;
+                end
+                while(top < maxy)
+                    top = top + 0.1;
+                end
+                
                 a = obj.h.top_axes;
                 axes(a);
-                axis([left, right, miny - 1, maxy + 1])
+                axis([left, right, bottom, top])
                 obj.syncViewLines();
             else
                 obj.resetView();
             end
+            set(obj.h.times_listbox, 'value', obj.time_index);
+            obj.showScale(obj.h.top_axes);
         end
         function filterChanged(obj, selection)
             %
@@ -678,46 +775,63 @@ classdef analysis_GUI < handle
             %   Changes the level of filtering that data goes through
             %   before plotting
             %
-            disp('NYI')
-            keyboard
             switch selection
                 case 1
-                    % plot the raw data
+                    %plot the raw data
+                    obj.data_to_plot = obj.void_finder2.data.cur_stream_data;
                 case 2
                     % filter lightly and plot
                     filter = sci.time_series.filter.smoothing(0.01,'type','rect');
-                    temp = obj.void_finder2.data.cur_stream_data.filter(filter);
+                    obj.data_to_plot = obj.void_finder2.data.cur_stream_data.filter(filter);
                 case 3
                     % plot the strongly filtered data from void_finder2
-                    
+                    obj.data_to_plot = obj.void_finder2.data.filtered_cur_stream_data;
+                    msgbox('warning: strongly filtered data causes timeshifts when viewing data')
+                    pause(2)
             end
-            
-            
+            obj.h__plotTopStream();
+            obj.showScale(obj.h.top_axes);
         end
-        function certaintySelected(obj, selection)
+        function nextStream(obj)
             %
-            % obj.certaintySelected(selection)
+            %   obj.nextStream()
             %
-            disp('NYI')
-            keyboard;
+            %   Increases the stream number by one and plots it
             
-            if obj.looking_at_voids_flag
-                certainty_array = obj.void_finder2.evaluateUncertainty(obj.start_marker_times, obj.end_marker_times);
-                switch lower(selection)
-                    case 'all'
-                        obj.times_to_display = obj.start_marker_times;
-                    case 'low'
-                        obj.times_to_display = obj.start_marker_times(certainty_array == 1);
-                        
-                    case 'medium'
-                        obj.times_to_display = obj.start_marker_times(certainty_array == 2);
-                    case 'high'
-                        obj.times_to_display = obj.start_marker_times(certainty_array == 3);
-                    otherwise
-                        error('unknown selection. How did you do that?')
-                end
-                obj.certainty_level = selection;
+            index = obj.cur_stream_number + 1;
+            obj.jumpToStream(index);
+        end
+        function jumpToStream(obj, index)
+            %
+            %   obj.jumpToStream(index)
+            %
+            %   Go to a specific stream
+            %   Inputs:
+            %   --------
+            %   - index: double -- which stream to go to
+            
+            if index > 9
+                error('outside of range of streams')
             end
+            obj.cur_stream_number = index;
+            obj.h__streamUpdated();
+        end
+        function nudge(obj,duration)
+            %
+            %   obj.nudge(duration)
+            %
+            %   Shifts the viewing window over by duration
+            
+            ax = obj.h.top_axes;
+            axes(ax)
+            cur_left = ax.XLim(1);
+            cur_right = ax.XLim(2);
+            
+            new_left = cur_left + duration;
+            new_right = cur_right + duration;
+            
+            axis([new_left,new_right,ax.YLim(1), ax.YLim(2)])
+            obj.showScale(ax); 
         end
     end
     methods % callback functions
@@ -725,36 +839,36 @@ classdef analysis_GUI < handle
             if obj.looking_at_voids_flag
                 obj.scrollRight();
             else
-                if obj.time_index + 1 <= length(obj.times_to_display)
+                if obj.time_index + 1 <= length(obj.times_of_interest)
                     obj.time_index = obj.time_index + 1;
                     obj.jumpToTime(obj.time_index);
-                    set(obj.h.times_listbox, 'value', obj.time_index);
                 end
             end
+            obj.showScale(obj.h.top_axes);
         end
         function cb_prevPressed(obj,~,~)
             if obj.looking_at_voids_flag
                 obj.scrollLeft();
             else
-                if obj.time_index - 1 ~= 0
+                if obj.time_index - 1 > 0
                     obj.time_index = obj.time_index - 1;
                     obj.jumpToTime(obj.time_index);
-                    set(obj.h.times_listbox, 'value', obj.time_index);
                 end
             end
+            obj.showScale(obj.h.top_axes);
         end
         function cb_browseClicked(obj,~,~)
             obj.browseExpts();
         end
         function cb_nextStream(obj,~,~)
-            temp = plotters.areYouSure('Are you sure you would like to go to the next stream?',0);
-            if isempty(temp)
-                return
-            end
+            temp = questdlg('Are you sure you would like to go to the next stream?','','yes','no', 'no');
+
+           
             switch temp
-                case 1
+                case 'yes'
                     disp('saving files');
                 otherwise
+                    disp('cancelled');
                     return
             end
             obj.saveCurrentData();
@@ -762,23 +876,27 @@ classdef analysis_GUI < handle
         end
         function cb_nextExpt(obj, ~, ~)
             message = 'Are you sure you want to move on to the next experiment?';
-            choice = plotters.areYouSure(message,0);
+            title = '';
+            choice = questdlg(message,title,'yes', 'no', 'no');
             switch choice
-                case 1
+                case 'yes'
                     disp('saving files');
                 otherwise
+                    disp('cancelled');
                     return
             end
             obj.saveCurrentData();
         end
         function cb_resetView(obj,~,~)
             obj.resetView();
+            obj.showScale(obj.h.top_axes);
         end
         function cb_saveAndClose(obj,~,~)
             message = 'Are you sure you want to save and close?';
-            choice = plotters.areYouSure(message,0);
+            title = '';
+            choice = questdlg(message,title,'yes','no','no');
             switch choice
-                case 1
+                case 'yes'
                     disp('saving files');
                 otherwise
                     return
@@ -790,11 +908,13 @@ classdef analysis_GUI < handle
             temp = src.String;
             index = str2double(temp);
             message = sprintf('Are you sure you want to jump to Stream %u ?',index);
-            choice = plotters.areYouSure(message,0);
+
+            
+            choice = questdlg(message, '', 'yes',',no','no');
             switch  choice
-                case 1
+                case 'yes'
                     obj.jumpToStream(index);
-                case 0
+                otherwise
                     return;
             end
         end
@@ -806,6 +926,10 @@ classdef analysis_GUI < handle
             obj.updateComment(comment);
         end
         function cb_newTimeSelected(obj,src,ev)
+            if isempty(src.String)
+                return
+            end
+           
             index = src.Value;
             if obj.looking_at_voids_flag
                 obj.jumpToMarker(index);
@@ -825,16 +949,29 @@ classdef analysis_GUI < handle
         end
         function cb_certaintySortChanged(obj,src,ev)
            selection = src.String{src.Value};
-           obj.certaintySelected(selection)
+           obj.certainty_level = selection;
+           set(obj.h.times_listbox, 'value', 1);
+           obj.looking_at_voids_flag = true;
+           obj.refreshTimesList();
+           
+           obj.jumpToMarker(1);
         end
         function cb_filterChanged(obj,src,ev)
-            selection = src.String{src.Value};
+            selection = src.Value;
             obj.filterChanged(selection)
+        end
+        function cb_nudge(obj,src,ev)
+            switch src.Tag
+                case 'nudge_right'
+                    obj.nudge(2);
+                case 'nudge_left'
+                    obj.nudge(-2);
+            end
         end
     end
     methods % initialization of GUI
         function initCertaintyList(obj)
-            to_display = {'All', 'Low', 'Medium', 'High'}
+            to_display = {'All', 'Low', 'Medium', 'High'};
             set(obj.h.certainty_listbox, 'String', to_display)
         end
         function initEventTypes(obj)
@@ -844,7 +981,7 @@ classdef analysis_GUI < handle
             %   Updates the list of event types to look at.(ex spike times,
             %   evaporations, etc.)
             
-            list = {'Voids Found';'Calibration' ; 'Spikes' ; 'Evaporations' ; 'Glitches'; 'Bad Resets' ; 'Unpaired'; 'Too Small'; 'Slope/Solids'; 'User-Deleted'};
+            list = {'Voids Found'; 'Possible Solids'; 'Calibration' ; 'Spikes' ; 'Evaporations' ; 'Glitches'; 'Bad Resets' ; 'Unpaired'; 'Too Small'; 'Slope/Solids'; 'User-Deleted'};
             set(obj.h.event_selection_listbox, 'String', list);
         end
     end
@@ -852,25 +989,38 @@ classdef analysis_GUI < handle
         function cb_addVoid(obj,~,ev)
             if ev.Button == 2
                 a = obj.h.top_axes;
+                
                 x1 = ev.IntersectionPoint(1) - 1;
                 y1 = obj.void_finder2.data.getDataFromTimePoints('raw',x1);
-                temp1 = line(a,x1,y1, 'color', 'black', 'marker', 'o', 'markersize', 10, 'hittest', 'on', 'buttondownfcn', {@obj.cb_clickmarker});
-                obj.start_markers{end+1} = plotters.void_marker(length(obj.start_markers) + 1,'start',temp1);
-                
+                temp1 = line(a,x1,y1, 'color', 'black', 'marker', 'o', 'markersize', 12, 'hittest', 'on');
                 x2 = ev.IntersectionPoint(1) + 1;
                 y2 = obj.void_finder2.data.getDataFromTimePoints('raw', x2);
-                temp2 = line(a,x2,y2, 'color', 'black', 'marker', 's', 'markersize', 10, 'hittest', 'on', 'buttondownfcn', {@obj.cb_clickmarker});
-                obj.end_markers{end+1} = plotters.void_marker(length(obj.end_markers)+1,'end', temp2);
+                temp2 = line(a,x2,y2, 'color', 'black', 'marker', 's', 'markersize', 12, 'hittest', 'on');
                 
+                obj.marker_objs{end+1} = plotters.marker_pair(obj,length(obj.marker_objs)+1,temp1,temp2);
+                
+                set(temp1, 'buttondownfcn', {@obj.cb_clickmarker,obj.marker_objs{end}});
+                set(temp2, 'buttondownfcn', {@obj.cb_clickmarker,obj.marker_objs{end}});
+ 
                 % TODO:
                 % put this marker in order with the other markers (LOW
                 % PRIORITY)
-                obj.processMarkerData();
-                obj.cur_marker_idx = length(obj.start_markers);
-                obj.updateMarkerDetails();
-                if obj.looking_at_voids_flag
-                    obj.times_to_display = obj.start_marker_times;
-                end
+                
+                
+            obj.cur_marker_idx_in_marker_array = length(obj.marker_objs);
+            cur_marker = obj.marker_objs{obj.cur_marker_idx_in_marker_array};
+
+            certainty_as_num =  obj.h__certaintyToNum(obj.certainty_level);
+            temp = (cur_marker.certainty == certainty_as_num) || certainty_as_num == 0;
+            
+            obj.getDataFromAllMarkers();
+            if obj.looking_at_voids_flag && temp                
+                obj.refreshTimesList();
+                obj.cur_marker_idx_in_times_listbox = find(obj.marker_idxs_shown_in_times_listbox == cur_marker.marker_index);
+                set(obj.h.times_listbox, 'Value',obj.cur_marker_idx_in_times_listbox);
+            end
+            obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
             end
         end
         function cb_clickLine(obj,src,ev)
@@ -890,7 +1040,7 @@ classdef analysis_GUI < handle
             end_time = obj.void_finder2.data.cur_stream_data.time.end_time;
             
             % prevent going out of range
-            if x < 0 || x> end_time
+            if x < 0 || x > end_time
                 return
             end
             
@@ -908,7 +1058,6 @@ classdef analysis_GUI < handle
             
             % change the axes on the top plot now that the lines are in place
             a = obj.h.top_axes;
-            temp = axis(a);
             axes(a);
             
             end_time = obj.void_finder2.data.cur_stream_data.time.end_time;
@@ -920,16 +1069,15 @@ classdef analysis_GUI < handle
             minx = sorted_locs(1);
             maxx = sorted_locs(2);
             
-            if minx > 0 && maxx < end_time;
-                
-            end
-            
+            if minx > 0 && maxx < end_time
             data_in_range = obj.void_finder2.data.getDataFromTimeRange('raw', sorted_locs);
             miny = min(data_in_range);
             maxy = max(data_in_range);
             axis([minx, maxx, miny, maxy]);
+            end
+            obj.showScale(obj.h.top_axes);
         end
-        function cb_clickmarker(obj,src,ev)
+        function cb_clickmarker(obj,src,ev,marker_obj)
             %
             %   Inputs:
             %   -------
@@ -937,33 +1085,29 @@ classdef analysis_GUI < handle
             %   ev: the Hit object with details about the click
             
             %TODO: make this loop a helper function
-            for k = 1:length(obj.start_markers)
-                cur_start = obj.start_markers{k};
-                cur_end = obj.end_markers{k};
-                cur_start_hand = cur_start.marker_handle;
-                cur_end_hand = cur_end.marker_handle;
-                
-                if src == cur_start_hand || src == cur_end_hand
-                    %make it the current marker
-                    obj.cur_marker_idx = k;
-                    if obj.looking_at_voids_flag
-                    obj.refreshTimesList();
-                    set(obj.h.times_listbox, 'Value', k);
-                    end
-                    obj.updateMarkerDetails();
-                    break
-                end
+   
+            obj.cur_marker_idx_in_marker_array = marker_obj.marker_index;
+            
+            cur_marker = obj.marker_objs{obj.cur_marker_idx_in_marker_array};
+            
+            certainty_as_num =  obj.h__certaintyToNum(obj.certainty_level);
+            temp = (cur_marker.certainty == certainty_as_num) || certainty_as_num == 0;
+            if obj.looking_at_voids_flag && temp                
+                obj.cur_marker_idx_in_times_listbox = find(obj.marker_idxs_shown_in_times_listbox == cur_marker.marker_index);
+                obj.refreshTimesList();
+                set(obj.h.times_listbox, 'Value',obj.cur_marker_idx_in_times_listbox);
             end
+            obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
             
             if ev.Button == 1
-                set(ancestor(src,'figure'),'windowbuttonmotionfcn',{@obj.cb_dragmarker,src})
-                set(ancestor(src,'figure'),'windowbuttonupfcn',{@obj.cb_stopdragging,src})
+                set(ancestor(src,'figure'),'windowbuttonmotionfcn',{@obj.cb_dragmarker,src,marker_obj})
+                set(ancestor(src,'figure'),'windowbuttonupfcn',{@obj.cb_stopdragging,src, marker_obj})
             elseif ev.Button == 3
-                % TODO: there must be a better way to do this?!
-                obj.h__deleteMarker(src)
+                obj.h__deleteMarker(marker_obj)
             end
         end
-        function cb_dragmarker(obj,fig,ev,src)
+        function cb_dragmarker(obj,fig,ev,src, marker_obj)
             coords=get(gca,'currentpoint');
             x=coords(1,1,1);
             end_time = obj.void_finder2.data.cur_stream_data.time.end_time;
@@ -971,29 +1115,40 @@ classdef analysis_GUI < handle
             if x < 0 || x> end_time
                 return
             end
+            if src == marker_obj.start_handle
+                if x >= marker_obj.end_handle.XData
+                    return
+                end
+            elseif src == marker_obj.end_handle
+                if x <= marker_obj.start_handle.XData
+                    return
+                end
+            end
+
             y = obj.void_finder2.data.getDataFromTimePoints('raw',x);
             set(src,'xdata',x,'ydata',y);
         end
-        function cb_stopdragging(obj,fig,ev,src)
+        function cb_stopdragging(obj,fig,ev,src, marker_obj)
             set(fig,'windowbuttonmotionfcn','')
             set(fig,'windowbuttonupfcn','')
             
-            for k = 1:length(obj.start_markers)
-                cur_start = obj.start_markers{k};
-                cur_end = obj.end_markers{k};
-                cur_start_hand = cur_start.marker_handle;
-                cur_end_hand = cur_end.marker_handle;
-                
-                if src == cur_start_hand || src == cur_end_hand
-                    %make it the current marker
-                    obj.cur_marker_idx = k;
-                    if obj.looking_at_voids_flag
-                    set(obj.h.times_listbox, 'Value', k);
-                    end
-                    obj.updateMarkerDetails();
-                    break
-                end
+            marker_obj.start_time = marker_obj.start_handle.XData;
+            marker_obj.end_time = marker_obj.end_handle.XData;
+            
+            obj.cur_marker_idx_in_marker_array = marker_obj.marker_index;
+
+            % TODO: give this it's own function (gets used frequently)
+            cur_marker = obj.marker_objs{obj.cur_marker_idx_in_marker_array};
+            
+            certainty_as_num =  obj.h__certaintyToNum(obj.certainty_level);
+            temp = (cur_marker.certainty == certainty_as_num) || certainty_as_num == 0;
+            if obj.looking_at_voids_flag && temp                
+                obj.cur_marker_idx_in_times_listbox = find(obj.marker_idxs_shown_in_times_listbox == cur_marker.marker_index);
+                obj.refreshTimesList();
+                set(obj.h.times_listbox, 'Value',obj.cur_marker_idx_in_times_listbox);
             end
+            obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
         end
     end
     methods (Hidden) % helpers
@@ -1008,21 +1163,39 @@ classdef analysis_GUI < handle
             
             obj.void_finder2.data.getStream(obj.cur_stream_number);
             set(obj.h.stream_num_text, 'String', obj.cur_stream_number);
-            a = obj.h.top_axes;
-            axes(a);
-            hold off
-            obj.void_finder2.data.plotData('raw',a);
+           
+            obj.data_to_plot = obj.void_finder2.data.cur_stream_data;
             
+            
+            obj.h__plotTopStream();
+                
             b = obj.h.bottom_axes;
-            axes(b);
             hold off
             obj.void_finder2.data.plotData('raw',b);
             
+            a = obj.h.top_axes;
             set(a,'fontsize',7);
             set(b,'fontsize',7);
             hold on
-            obj.cur_marker_idx = 0;
+            obj.cur_marker_idx_in_marker_array = 0;
+            obj.cur_marker_idx_in_times_listbox = 0;
             obj.stream_has_been_processed = false;
+        end
+        function h__plotTopStream(obj)
+            %
+            %   obj.plotStream
+            %
+            %   Plots the current stream using the data specified by
+            %   obj.data_to_plot
+            %
+            %   TODO: move this method
+            
+            axes(obj.h.top_axes);
+            set(obj.data_plot_handle,'Visible', 'off')
+            hold on
+            temp = obj.data_to_plot.plot('color',[0 0.4470 0.7410]);
+            obj.data_plot_handle = temp.render_objs{1}.h_and_l.h_plot{1};
+            uistack(obj.data_plot_handle,'bottom')
         end
         function h__scroll(obj, increment)
             %
@@ -1038,59 +1211,76 @@ classdef analysis_GUI < handle
             %                or negative
             
             if ~obj.void_just_deleted
-                index = obj.cur_marker_idx + increment;
+                index = obj.cur_marker_idx_in_times_listbox + increment;
             else
-                index = obj.cur_marker_idx;
+                index = obj.cur_marker_idx_in_times_listbox;
             end
             obj.void_just_deleted = 0;
             
             obj.jumpToMarker(index);
-            set(obj.h.times_listbox,'Value',obj.cur_marker_idx);
             %   TODO: rollover
         end
-        function h__deleteMarker(obj,src)
+        function h__deleteMarker(obj,marker_obj)
             %
             %   obj.h__deleteMarker(src)
             %
             %   Given the handle to a marker, deletes it and it partner
             %   Inputs:
             %   --------
-            %   - src: the handle of the marker got from the callback
+            %   - marker_obj: the handle of the marker got from the callback
+                       
+            idx = marker_obj.marker_index;
             
-            for k = 1:length(obj.start_markers)
-                cur_start = obj.start_markers{k};
-                cur_end = obj.end_markers{k};
-                
-                if src == cur_start.marker_handle || src == cur_end.marker_handle
-                    % have to delete the handle to remove the line,
-                    % then delete the cell.
-                    %
-                    % TODO: have a delete method for the marker
-                    % object
-                    obj.deleted_starts(end+1) = cur_start.marker_handle.XData;
-                    obj.deleted_ends(end+1) = cur_end.marker_handle.XData;
-                    
-                    delete(cur_start.marker_handle);
-                    obj.start_markers(k) = [];
-                    delete(cur_end.marker_handle);
-                    obj.end_markers(k) = [];
-                    
-                    % this will move you one ahead from where you were
-                    obj.processMarkerData();
-                    obj.cur_marker_idx = k;
-                    
-                    if obj.looking_at_voids_flag
-                        obj.times_to_display = obj.start_marker_times;
-                        obj.refreshTimesList();
-                        set(obj.h.times_listbox, 'value', k);
-                    end
-                    obj.void_just_deleted = true;
-                    return
-                end
+            marker_obj.clearLineObjs();
+            obj.deleted_starts(end+1) = marker_obj.start_time;
+            obj.deleted_ends(end+1) = marker_obj.end_time;
+            obj.start_marker_times(idx) = [];
+            obj.end_marker_times(idx) = [];
+            
+            obj.cur_marker_idx_in_marker_array = marker_obj.marker_index;
+            obj.marker_objs(idx) = [];
+            
+            % need to adjust all the indices
+            for k = idx:length(obj.marker_objs)
+                obj.marker_objs{k}.marker_index = k;
             end
+            if obj.cur_marker_idx_in_marker_array > length(obj.marker_objs)
+                obj.cur_marker_idx_in_marker_array = length(obj.marker_objs);
+            end
+            
+            %this is now the marker that has shifted into the spot of
+            %the old marker
+            cur_marker = obj.marker_objs{obj.cur_marker_idx_in_marker_array};
+            
+            certainty_as_num =  obj.h__certaintyToNum(obj.certainty_level);
+            temp = (cur_marker.certainty == certainty_as_num) || certainty_as_num == 0;
+            
+            if obj.looking_at_voids_flag && temp
+                obj.refreshTimesList();
+                obj.cur_marker_idx_in_times_listbox = find(obj.marker_idxs_shown_in_times_listbox == cur_marker.marker_index);
+                set(obj.h.times_listbox, 'Value',obj.cur_marker_idx_in_times_listbox);
+            end
+            obj.updateMarkerDetailsBox();
+            obj.updateCommentBox();
+            obj.void_just_deleted = true;
+            % TODO: sort by time (low priority)
         end
-        function output = h__findMarkerTime(obj,marker)
+        function output = h__findMarkerTime(~,marker)
             output = marker.marker_handle.XData;
+        end
+        function output = h__certaintyToNum(~,certainty)
+            switch lower(certainty)
+                case 'all'
+                    output = 0;
+                case 'low'
+                    output = 1;
+                case 'medium'
+                    output = 2;
+                case 'high'
+                    output = 3;
+                otherwise
+                    error('unknown selection. How did you do that?')
+            end
         end
     end
 end

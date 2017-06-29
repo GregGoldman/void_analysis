@@ -30,10 +30,6 @@ classdef void_data < handle
         updated_start_times
         updated_end_times
         
-        % I don't think I use these two:
-        final_start_times
-        final_end_times
-        
         calibration_start_times
         calibration_end_times
         
@@ -71,6 +67,9 @@ classdef void_data < handle
         proximity_issue_starts
         proximity_issue_ends
         
+        
+        possible_solid_start_times
+        possible_solid_end_times
 
         % voided volume and voiding time
         u_vv %user
@@ -245,7 +244,7 @@ classdef void_data < handle
             reset_starts = obj.reset_start_times;
             reset_stops = obj.reset_end_times;
             
-            obj.c_vv = obj.getVoidedVolume(start_markers, end_markers, reset_starts, reset_stops);
+            obj.c_vv = obj.getVV(start_markers, end_markers);
             obj.c_vt = obj.getVoidingTime(start_markers, end_markers);
             obj.c_slopes = obj.getSlopes(obj.c_vv,obj.c_vt);
         end

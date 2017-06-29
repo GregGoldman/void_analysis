@@ -1,0 +1,30 @@
+Good:
+7
+12
+15 (but long end, not great)
+18
+
+
+possible solid: 
+1 (too linear)
+3 (local max at top)
+4 (too linear)
+8 (possible local max at top)
+11 (long start)
+14 (pretty bad)
+19 (likely ok though)
+
+definite solid
+9 (sharp up at end)
+13 (local max near end)
+
+Reset:
+2
+5
+17
+20
+
+Glitch:
+6
+10
+16

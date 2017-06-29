@@ -51,7 +51,7 @@ classdef void_finder2 <handle
         certainty_level_array
         % array of indices for the markers which lists how sure we are
         % ranking from 1-3, 3 being the most certain
-        
+
     end
     methods %overall functionality
         function obj = void_finder2()
@@ -73,25 +73,23 @@ classdef void_finder2 <handle
             
             %Acceleration Processing
             % ----------------------
-            % - Find all the possible start and stop points 
+            % - Find all the possible start and stop points
             % - populates:
             %       obj.initial_start_times, obj.initial_end_times
             %       obj.updated_start_times, obj.updated_end_times
             obj.processD2();
-            
-            
             
             %Handling balance calibration
             % ---------------------------------------------
             obj.IDCalibration();
             % input is 90 seconds, representing calibration period, so no
             % voids are allowed to occur within this time period
-            % populates: 
+            % populates:
             %       void_data.calibration_start_times
             %       obj.void_data.calibration_end_times
             %       the updated list of detections
             
-
+            
             %------------------------------------------------------------
             obj.findSpikes();
             % Looks for regions in the data where magnitude increases and
@@ -111,26 +109,33 @@ classdef void_finder2 <handle
             obj.findPairs();
             % Matches starts and stops which are closest together. Stores
             % markers without a partner
-            
-            
+
             %----------------------------------------------------------
+            obj.sizeFilter();
+            % obj.sizeFilter(min_void_time, noise_multiplier);
+            % see comments in fcn
+            %-----------
             obj.improveAccuracyByStd();
             % Iterates through the marker pairs and looks for large changes
             % relative to the mean to find starts/stops (6/23/17)
             
+            % THIS NEEDS TO BE THE LAST THING TO RUN BEFORE compareKMeans 
             
-            %------------------------------------------------------------
-            MIN_VOID_TIME = obj.options.min_void_time;
-            NOISE_MULTIPLIER  = obj.options.noise_multiplier;
-            obj.removeShortAndSmall(MIN_VOID_TIME, NOISE_MULTIPLIER);
-            % obj.findType(min_void_time, noise_multiplier);
-            % see comments in fcn
-            
+            %----------------------------------------------
+             obj.compareKMeans();
+            % Matches the filtered data to previously identified shapes
+            %
             %----------------------------------------------------------
-            obj.evaluateUncertainty();
+            obj.sizeFilter();
+            % good to do this again          
+            
+            %-----------------------------------------------------
+            %obj.evaluateUncertainty();
+            % THIS FCN SHOULD LIKELY BE DELETED!
+            %       **at least call it evaluateLinearity (more accuracte)
             % Ranks the likelyhood of a proper marking by the residuals
             % from a straight line drawn between start and end markers
-            % (residuals normalized to the magnitude of the voided volume)           
+            % (residuals normalized to the magnitude of the voided volume)
         end
     end
     methods % data processing methods and filtering
@@ -167,7 +172,7 @@ classdef void_finder2 <handle
             CALIBRATION_PERIOD = obj.options.calibration_period;
             
             [cal_starts, cal_ends] = obj.void_data.getMarkersInTimeRange(0,CALIBRATION_PERIOD);
-           
+            
             % removes these times from the array
             obj.void_data.invalidateRanges(cal_starts, cal_ends, 'calibration');
         end
@@ -234,7 +239,7 @@ classdef void_finder2 <handle
             %   findPairs(obj)
             %
             %   findPairs attempts to match start and end markers by
-            %   matching a given start with the next closest stop. 
+            %   matching a given start with the next closest stop.
             
             %first, loop through the starting times
             start_times = obj.void_data.updated_start_times;
@@ -267,7 +272,7 @@ classdef void_finder2 <handle
                     partners(partner_count, 1) = start_to_save;
                     partners(partner_count, 2) = stop_to_save;
                 end
-            end           
+            end
             a = 1:length(start_times);
             b = 1:length(end_times);
             delete_start_idxs = setdiff(a,partners(:,1));
@@ -278,9 +283,9 @@ classdef void_finder2 <handle
             
             obj.void_data.invalidateRanges(bad_starts, bad_ends, 'unpaired');
         end
-        function removeShortAndSmall(obj, min_void_time, noise_multiplier)
+        function sizeFilter(obj)
             %
-            %   obj.removeShortAndSmall(min_void_time, noise_multiplier);
+            %   obj.sizeFilter(min_void_time, noise_multiplier);
             %
             %   classifies the voiding events by looking at voided volume,
             %   voiding time, proximity to other void events, etc...
@@ -293,6 +298,10 @@ classdef void_finder2 <handle
             %       times the magnitude of the noise (min to max) to be
             %       considered a valid void
             
+            min_void_time = obj.options.min_void_time;
+            noise_multiplier = obj.options.noise_multiplier;
+            max_void_time = obj.options.max_void_time;
+            
             obj.void_data.processCptMarkedPts;
             % find VV and VT
             % remove those with small void times
@@ -300,6 +309,12 @@ classdef void_finder2 <handle
             bad_starts = obj.void_data.updated_start_times(temp);
             bad_ends = obj.void_data.updated_end_times(temp);
             obj.void_data.invalidateRanges(bad_starts, bad_ends, 'solid_void', 'overwrite', true);
+            
+            temp = obj.void_data.c_vt > max_void_time;
+            bad_starts = obj.void_data.updated_start_times(temp);
+            bad_ends = obj.void_data.updated_end_times(temp);
+            obj.void_data.invalidateRanges(bad_starts, bad_ends, 'spike', 'overwrite', 'false');
+            
             
             obj.void_data.processCptMarkedPts;
             % re-process without those bad voids
@@ -324,6 +339,7 @@ classdef void_finder2 <handle
             bad_ends = obj.void_data.updated_end_times(too_small);
             
             obj.void_data.invalidateRanges(bad_starts, bad_ends, 'too_small');
+
         end
         function varargout = evaluateUncertainty(obj, varargin)
             %
@@ -361,7 +377,7 @@ classdef void_finder2 <handle
             for k = 1:length(in.start_times)
                 start_time = in.start_times(k);
                 end_time = in.end_times(k);
-
+                
                 start_vals = obj.data.getDataFromTimeRange('raw', [start_time - 0.005, start_time + 0.005]);
                 end_vals = obj.data.getDataFromTimeRange('raw', [end_time - 0.005, end_time + 0.005]);
                 
@@ -425,7 +441,7 @@ classdef void_finder2 <handle
             %    will have larger residuals of a line fit between the data
             %    points.
             %
-            %   Plots the lines and displays the residuals for analysis. 
+            %   Plots the lines and displays the residuals for analysis.
             
             if length(obj.void_data.updated_start_times) ~= length(obj.void_data.updated_end_times)
                 error('mismatched dimensions');
@@ -503,17 +519,17 @@ classdef void_finder2 <handle
             %   Plots based on the input arguments/defaults
             %   Inputs
             %   -------
-            %   data_source: 
+            %   data_source:
             %       -'raw' (default)
             %       - 'filtered' shows the butterworth filter results
             %       - 'rect' shows the rectangular filter results (NYI!)
             %   plot_user: true(defualt) or false
             %   plot_cpt: true(default) or false
-
+            
             % set defaults
             in.data_source = 'raw';
             in.plot_user = true;
-            in.plot_cpt = true;     
+            in.plot_cpt = true;
             
             % modify defaults
             in = sl.in.processVarargin(in, varargin);
@@ -521,7 +537,7 @@ classdef void_finder2 <handle
             % plotting
             obj.data.plotData(in.data_source);
             
-            hold on 
+            hold on
             if in.plot_user
                 obj.void_data.plotMarkers(in.data_source, 'user');
             end
@@ -535,7 +551,7 @@ classdef void_finder2 <handle
             %
             %   Plots the raw data, the rect filtered data, and the cpt
             %   markers. Pauses at each region. Press 1, enter to go
-            %   forward; 0, enter, to go backward. 
+            %   forward; 0, enter, to go backward.
             %
             %   TODO: this is both ugly and slow
             

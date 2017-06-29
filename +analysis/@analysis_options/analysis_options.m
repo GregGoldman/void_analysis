@@ -9,6 +9,7 @@ classdef analysis_options < handle
         %some noise stuff
         calibration_period
         min_void_time
+        max_void_time
         noise_multiplier
         spike_time_window
         spike_magnitude_tolerance
@@ -31,6 +32,7 @@ classdef analysis_options < handle
            obj.accel_thresh = 2*10^-8;
            obj.calibration_period = 90;
            obj.min_void_time = 0.5;
+           obj.max_void_time = 15;
            obj.noise_multiplier = 0.25;
            obj.speed_thresh = 3*10^-3;
            obj.d1_spike_window = 10;
